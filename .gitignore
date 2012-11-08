@@ -13,6 +13,9 @@ sdist
 develop-eggs
 .installed.cfg
 
+*.tar
+*.tar.gz
+
 # Installer logs
 pip-log.txt
 
@@ -25,3 +28,14 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
+
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+*.db
+
