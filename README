@@ -1,0 +1,12 @@
+Transwarp is a web framework compatible with WSGI, also comes with 
+a lightweight database access module, a mail sender, a task queue 
+and utils like url fetch.
+
+This package was originally written by Michael Liao. You can find 
+docs and source code at:
+
+http://michaelliao.github.com/transwarp/
+
+Please report bugs or any suggestions at:
+
+https://github.com/michaelliao/transwarp/

@@ -1,0 +1,6 @@
+＃ locale: zh_CN
+
+Hello, world! = 你好，世界！
+1 + 1 \= 2 = 一加一等于二
+Hi, %s! = 嗨，%s！
+# apple = 苹果
