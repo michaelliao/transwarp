@@ -17,13 +17,15 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 
-def smtp(host, port=25, username=None, passwd=None, use_tls=False):
+def smtp(host, port=None, username=None, passwd=None, use_tls=False):
     '''
     Generate a tuple that contains smtp info:
     (host, port, username, passwd, use_tls).
     e.g.:
     ('smtp.example.com', 25, 'user', 'passw0rd', False)
     '''
+    if port is None:
+        port = 465 if use_tls else 25
     return (host, port, username, passwd, use_tls)
 
 def _encode_header(s):
