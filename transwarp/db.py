@@ -52,7 +52,7 @@ def next_int():
     return _id_generator.next_id()
 
 def next_str():
-    return uuid.uuid4().hex
+    return '%018d%s' % (int(time.time()*100000), uuid.uuid4().hex)
 
 class _Dict(dict):
     '''
@@ -479,6 +479,12 @@ def update_kw(table, where, *args, **kw):
     sql = ' '.join(sqls)
     params.extend(args)
     return update(sql, *params)
+
+def init_connector(func_connect, convert_char='%s'):
+    global _db_connect, _db_convert
+    _log('init connector...')
+    _db_connect = func_connect
+    _db_convert = convert_char
 
 def init(db_type, db_schema, db_host, db_port=0, db_user=None, db_password=None, db_driver=None, **db_args):
     '''
