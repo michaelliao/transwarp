@@ -2047,7 +2047,7 @@ class WSGIApplication(object):
             ctx.response.write(ret.encode('utf-8'))
         elif isinstance(ret, Template):
             ctx.response.write(self.template_render(ret.template_name, **ret.model))
-        else:
+        elif ret is not None:
             ctx.response.write(str(ret))
         start_response(ctx.response.status, ctx.response.headers)
         return ctx.response.body
