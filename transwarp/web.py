@@ -1417,7 +1417,15 @@ class Response(object):
         return self._output
 
     def write(self, value):
-        self._output.append(value)
+        s = ''
+        if isinstance(value, str):
+            s = value
+        elif isinstance(value, unicode):
+            s = value.encode('utf-8')
+        elif value is not None:
+            s = str(value)
+        if s:
+            self._output.append(s)
 
     def reset(self):
         self._output[:] = []
