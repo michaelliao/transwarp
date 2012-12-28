@@ -1952,6 +1952,7 @@ class WSGIApplication(object):
             if self._getmtime(mod.__file__) > mod.mtime:
                 _log('[DEBUG] auto reload module: %s' % mod.__name__)
                 reload(mod)
+                mod.mtime = self._getmtime(mod.__file__)
                 shouldreload = True
         if shouldreload:
             self.get_static_routes, self.post_static_routes, self.get_re_routes, self.post_re_routes = self._parse_routes(self.modules, self._debug)
