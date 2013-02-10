@@ -1233,7 +1233,10 @@ class Response(object):
         '''
         Set content type for response. This is a shortcut for set_header('Content-Type', value).
         '''
-        self.set_header('CONTENT-TYPE', value)
+        if value:
+            self.set_header('CONTENT-TYPE', value)
+        else:
+            self.unset_header('CONTENT-TYPE')
 
     @property
     def content_length(self):
