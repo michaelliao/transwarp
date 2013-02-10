@@ -9,8 +9,6 @@ Database operation module. This module is independent with web module.
 
 import os, re, sys, time, uuid, socket, datetime, functools, threading, logging, collections
 
-logging.basicConfig(level=logging.INFO)
-
 class _IdGenerator():
     def __init__(self, server_id=0):
         '''
@@ -108,7 +106,7 @@ class NoResultError(DBError):
     pass
 
 def _log(s):
-    logging.info(s)
+    logging.debug(s)
 
 def _db_connect():
     '''
