@@ -401,7 +401,7 @@ def _unquote_plus(s, encoding='utf-8'):
     return urllib.unquote_plus(s).decode(encoding)
 
 def _log(s):
-    logging.info(s)
+    logging.debug(s)
 
 def _json2str(s):
     if s.startswith(r'"') and s.endswith(r'"'):
