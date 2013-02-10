@@ -196,7 +196,7 @@ _RESPONSE_HEADER_DICT = {}
 for hdr in _RESPONSE_HEADERS:
     _RESPONSE_HEADER_DICT[hdr.upper()] = hdr
 
-_HEADER_X_POWERED_BY = ('X-Powered-By', 'iTranswarp/1.0')
+_HEADER_X_POWERED_BY = ('X-Powered-By', 'transwarp/1.0')
 
 class HttpError(StandardError):
     '''
@@ -227,7 +227,9 @@ class HttpError(StandardError):
     def __str__(self):
         return self.status
 
-class RedirectError(StandardError):
+    __repr__ = __str__
+
+class RedirectError(HttpError):
     '''
     RedirectError that defines http redirect code.
 
@@ -241,12 +243,13 @@ class RedirectError(StandardError):
         '''
         Init an HttpError with response code.
         '''
-        super(RedirectError, self).__init__()
-        self.status = '%d %s' % (code, _RESPONSE_STATUSES[code])
+        super(RedirectError, self).__init__(code)
         self.location = location
 
     def __str__(self):
-        return self.status
+        return '%s, %s' % (self.status, self.location)
+
+    __repr__ = __str__
 
 class JsonRpcError(StandardError):
     pass
@@ -327,7 +330,7 @@ def redirect(location):
     >>> raise redirect('http://www.itranswarp.com/')
     Traceback (most recent call last):
       ...
-    RedirectError: 301 Moved Permanently
+    RedirectError: 301 Moved Permanently, http://www.itranswarp.com/
     '''
     return _redirect(301, location)
 
@@ -338,7 +341,7 @@ def found(location):
     >>> raise found('http://www.itranswarp.com/')
     Traceback (most recent call last):
       ...
-    RedirectError: 302 Found
+    RedirectError: 302 Found, http://www.itranswarp.com/
     '''
     return _redirect(302, location)
 
@@ -349,7 +352,7 @@ def seeother(location):
     >>> raise seeother('http://www.itranswarp.com/')
     Traceback (most recent call last):
       ...
-    RedirectError: 303 See Other
+    RedirectError: 303 See Other, http://www.itranswarp.com/
     >>> e = seeother('http://www.itranswarp.com/seeother?r=123')
     >>> e.location
     'http://www.itranswarp.com/seeother?r=123'
@@ -1150,10 +1153,10 @@ class Response(object):
 
         >>> r = Response()
         >>> r.headers
-        [('Content-Type', 'text/html; charset=utf-8'), ('X-Powered-By', 'iTranswarp/1.0')]
+        [('Content-Type', 'text/html; charset=utf-8'), ('X-Powered-By', 'transwarp/1.0')]
         >>> r.set_cookie('s1', 'ok', 3600)
         >>> r.headers
-        [('Content-Type', 'text/html; charset=utf-8'), ('Set-Cookie', 's1=ok; Max-Age=3600; Path=/'), ('X-Powered-By', 'iTranswarp/1.0')]
+        [('Content-Type', 'text/html; charset=utf-8'), ('Set-Cookie', 's1=ok; Max-Age=3600; Path=/'), ('X-Powered-By', 'transwarp/1.0')]
         '''
         L = [(_RESPONSE_HEADER_DICT.get(k, k), v) for k, v in self._headers.iteritems()]
         if self._cookies:
