@@ -1353,10 +1353,12 @@ def _install_template_engine(name, templ_dir, **kw):
 def _default_error_handler(e, start_response, is_debug):
     if isinstance(e, HttpError):
         logging.info('HttpError: %s' % e.status)
-        start_response(e.status, e.headers)
+        headers = e.headers[:]
+        headers.append(('Content-Type', 'text/html'))
+        start_response(e.status, headers)
         return ('<html><body><h1>%s</h1></body></html>' % e.status)
     logging.exception('Exception:')
-    start_response('500 Internal Server Error', [_HEADER_X_POWERED_BY])
+    start_response('<html><body><h1>500 Internal Server Error</h1></body></html>', [('Content-Type', 'text/html'), _HEADER_X_POWERED_BY])
     if is_debug:
         return _debug()
     return ('<html><body><h1>500 Internal Server Error</h1><h3>%s</h3></body></html>' % str(e))
