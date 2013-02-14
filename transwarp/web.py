@@ -42,27 +42,6 @@ class Dict(dict):
     def __setattr__(self, key, value):
         self[key] = value
 
-def _json_loads(s, expected=None):
-    '''
-    Loads json.
-
-    >>> r = _json_loads(r'{"test": "ok", "users": [{"name": "Michael"}, {"name": "Tracy"}]}')
-    >>> r.test
-    u'ok'
-    >>> r.users[0].name
-    u'Michael'
-    >>> r.users[1].name
-    u'Tracy'
-    >>> r = _json_loads(r'{"test": "ok"}', expected=(list, tuple))
-    Traceback (most recent call last):
-      ...
-    TypeError: Object loaded from json is not expected type: (<type 'list'>, <type 'tuple'>)
-    '''
-    r = json.loads(s, object_pairs_hook=Dict)
-    if expected:
-        if not isinstance(r, expected):
-            raise TypeError('Object loaded from json is not expected type: %s' % str(expected))
-    return r
 
 def _json_dumps(obj):
     '''
@@ -251,9 +230,6 @@ class RedirectError(HttpError):
 
     __repr__ = __str__
 
-class JsonRpcError(StandardError):
-    pass
-
 def badrequest():
     '''
     Send a bad request response.
@@ -402,150 +378,6 @@ def _unquote_plus(s, encoding='utf-8'):
 
 def _log(s):
     logging.debug(s)
-
-def _json2str(s):
-    if s.startswith(r'"') and s.endswith(r'"'):
-        return _json_loads(s, expected=unicode).decode('utf-8')
-    return s
-
-def _json2unicode(s):
-    if s.startswith(r'"') and s.endswith(r'"'):
-        return _json_loads(s, expected=unicode)
-    return s.decode('utf-8')
-
-def _json2bool(s):
-    if s=='true':
-        return True
-    if s=='false':
-        return False
-    raise ValueError('Cannot decode JSON to bool.')
-
-_JSON_CONVERTERS = {
-    'bool': _json2bool,
-    'int': int,
-    'long': int,
-    'float': float,
-    'str': _json2str,
-    'unicode': _json2unicode,
-    'object': functools.partial(_json_loads, expected=(dict, list, tuple, types.NoneType)),
-    'dict': functools.partial(_json_loads, expected=(dict, types.NoneType)),
-    'list': functools.partial(_json_loads, expected=(list, tuple, types.NoneType)),
-}
-
-def jsonresult(func):
-    '''
-    Autoconvert result to json str.
-
-    >>> @jsonresult
-    ... def hello(name):
-    ...     return dict(name=name)
-    >>> ctx.response = Response()
-    >>> hello('Bob')
-    '{"name": "Bob"}'
-    >>> ctx.response.header('CONTENT-TYPE')
-    'application/json; charset=utf-8'
-    >>> hello(None)
-    '{"name": null}'
-    '''
-    @functools.wraps(func)
-    def _wrapper(*args, **kw):
-        r = func(*args, **kw)
-        ctx.response.content_type = 'application/json; charset=utf-8'
-        return _json_dumps(r)
-    return _wrapper
-
-def jsonrpc(*type_args):
-    '''
-    A json rpc wrapper that convert all args and return value into json objects. 
-    The function decorated by @jsonrpc can only be called by keyword args.
-
-    >>> @jsonrpc(int, unicode, dict)
-    ... def show(id, name, job):
-    ...     return (id, name, [job.title, job.salary])
-    >>> from StringIO import StringIO
-    >>> ctx.request = Request({'REQUEST_METHOD':'POST', 'wsgi.input':StringIO('id=123&name=%22Michael%22&job=%7B%22title%22%3A%22Architect%22%2C+%22salary%22%3A+875000%7D')})
-    >>> ctx.response = Response()
-    >>> show()
-    '[123, "Michael", ["Architect", 875000]]'
-    >>> ctx.response.header('CONTENT-TYPE')
-    'application/json; charset=utf-8'
-    >>> ctx.request = Request({'REQUEST_METHOD':'POST', 'wsgi.input':StringIO('id=123&name=Michael&job=true')})
-    >>> show() # expected dict args but pass list args!
-    Traceback (most recent call last):
-      ...
-    TypeError: Object loaded from json is not expected type: (<type 'dict'>, <type 'NoneType'>)
-    >>> @jsonrpc(int) # args are not match the decorating function!
-    ... def bad(id, name):
-    ...     pass
-    >>> bad()
-    Traceback (most recent call last):
-      ...
-    JsonRpcError: @jsonrpc args and function args are not match.
-    >>> @jsonrpc(xrange) # not supported json types: xrange!
-    ... def badrange(range):
-    ...     pass
-    Traceback (most recent call last):
-      ...
-    JsonRpcError: Not supported type: xrange
-    '''
-    _f_toname = lambda s: s.__name__ if isinstance(s, type) else str(s)
-    t_args = [_f_toname(ta) for ta in type_args]
-    for t in t_args:
-        if not t in _JSON_CONVERTERS:
-            raise JsonRpcError('Not supported type: %s' % t)
-
-    def _decorator(func):
-        def _defaults_dict(f_args, f_defaults):
-            if f_defaults:
-                num = len(f_args) - len(f_defaults)
-                r = {}
-                for k, v in zip(f_args[num:], f_defaults):
-                    r[k] = v
-                return r
-            return {}
-
-        def _convert_json(type_arg, str_arg):
-            return _JSON_CONVERTERS[type_arg](str_arg)
-
-        @functools.wraps(func)
-        def _wrapper(**anykw):
-            if len(_wrapper.__args__)!=len(t_args):
-                raise JsonRpcError('@jsonrpc args and function args are not match.')
-            kw = ctx.request.input()
-            vargs = []
-            count = _wrapper.__required_args__
-            for arg, targ in zip(_wrapper.__args__, t_args):
-                if count > 0:
-                    if arg in kw:
-                        vargs.append(_convert_json(targ, kw[arg]))
-                    else:
-                        raise JsonRpcError('Not enough args.')
-                else:
-                    if arg in kw:
-                        vargs.append(_convert_json(targ, kw[arg]))
-                    else:
-                        vargs.append(_wrapper.__defaults_dict__[arg])
-                count = count - 1
-
-            _log('call jsonrpc.wrapper args: %s' % str(vargs))
-            r = func(*vargs)
-            jr = _json_dumps(r)
-            ctx.response.set_header('CONTENT-TYPE', 'application/json; charset=utf-8')
-            return jr
-        fargs, fvarargs, fkw, fdefaults = inspect.getargspec(func)
-        if fvarargs:
-            raise JsonRpcError('function decorated with @jsonrpc cannot have varargs.')
-        if fkw:
-            raise JsonRpcError('function decorated with @jsonrpc cannot have keyword args.')
-        _wrapper.__args__ = fargs
-        if fdefaults:
-            _wrapper.__required_args__ = len(fargs) - len(fdefaults)
-            _wrapper.__defaults_dict__ = _defaults_dict(fargs, fdefaults)
-        else:
-            _wrapper.__required_args__ = len(fargs)
-            _wrapper.__defaults_dict__ = {}
-        return _wrapper
-    return _decorator
 
 def _route_decorator_maker(path, allow_get, allow_post):
     '''
@@ -2046,24 +1878,29 @@ class WSGIApplication(object):
         global ctx
         try:
             ret = r.execute() if kw is None else r.execute(**kw)
-        except RedirectError as e:
+        except RedirectError, e:
             ctx.response.set_header('Location', e.location)
             start_response(e.status, ctx.response.headers)
             return ()
-        except Exception as e:
+        except Exception, e:
             return self.error_handler(e, start_response, self._debug)
         if isinstance(ret, types.GeneratorType):
             start_response(ctx.response.status, ctx.response.headers)
             return ret
-        # if ret instance of Template...
+        # ret to response_text:
+        resp = ''
         if isinstance(ret, str):
-            ctx.response.write(ret)
+            resp = ret
         elif isinstance(ret, unicode):
-            ctx.response.write(ret.encode('utf-8'))
+            resp = ret.encode('utf-8')
         elif isinstance(ret, Template):
-            ctx.response.write(self.template_render(ret.template_name, **ret.model))
+            try:
+                resp = self.template_render(ret.template_name, **ret.model)
+            except Exception, e:
+                return self.error_handler(e, start_response, self._debug)
         elif ret is not None:
-            ctx.response.write(str(ret))
+            resp = str(ret)
+        ctx.response.write(resp)
         start_response(ctx.response.status, ctx.response.headers)
         return ctx.response.body
 
