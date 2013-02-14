@@ -1358,7 +1358,7 @@ def _default_error_handler(e, start_response, is_debug):
         start_response(e.status, headers)
         return ('<html><body><h1>%s</h1></body></html>' % e.status)
     logging.exception('Exception:')
-    start_response('<html><body><h1>500 Internal Server Error</h1></body></html>', [('Content-Type', 'text/html'), _HEADER_X_POWERED_BY])
+    start_response('500 Internal Server Error', [('Content-Type', 'text/html'), _HEADER_X_POWERED_BY])
     if is_debug:
         return _debug()
     return ('<html><body><h1>500 Internal Server Error</h1><h3>%s</h3></body></html>' % str(e))
