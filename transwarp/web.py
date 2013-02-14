@@ -42,27 +42,6 @@ class Dict(dict):
     def __setattr__(self, key, value):
         self[key] = value
 
-
-def _json_dumps(obj):
-    '''
-    Dumps any object as json string.
-
-    >>> class Person(object):
-    ...     def __init__(self, name):
-    ...         self.name = name
-    >>> _json_dumps([Person('Bob'), None])
-    '[{"name": "Bob"}, null]'
-    '''
-    def _dump_obj(obj):
-        if isinstance(obj, dict):
-            return obj
-        d = dict()
-        for k in dir(obj):
-            if not k.startswith('_'):
-                d[k] = getattr(obj, k)
-        return d
-    return json.dumps(obj, default=_dump_obj)
-
 # all known response statues:
 _RESPONSE_STATUSES = {
     # Informational
