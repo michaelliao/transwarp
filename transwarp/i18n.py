@@ -137,8 +137,8 @@ def _extract_msg(root_path, locale, includes=('*.py', '*.html'), excludes=()):
     print 'scan path %s...' % root_path
     RE_MSG = re.compile(r'\_\s*\(\s*(u?r?)\'(.*?)\'\s*\)')
     d = dict()
-    L = [f for f in os.listdir(root_path) if not f.startswith('.')]
-    fs = [os.path.join(root_path, f) for f in L if os.path.isfile(os.path.join(root_path, f)) and _match(f, includes) and not _match(f, excludes)]
+    L = [f for f in os.listdir(root_path) if not f.startswith('.') and not _match(f, excludes)]
+    fs = [os.path.join(root_path, f) for f in L if os.path.isfile(os.path.join(root_path, f)) and _match(f, includes)]
     ds = [os.path.join(root_path, f) for f in L if os.path.isdir(os.path.join(root_path, f)) and not os.path.isdir(os.path.join(root_path, f, 'i18n'))]
     for fpath in fs:
         print 'scan file %s...' % fpath
