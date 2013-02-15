@@ -1644,7 +1644,7 @@ class WSGIApplication(object):
             return ()
         except Exception, e:
             return self.error_handler(e, start_response, self._debug)
-        if isinstance(ret, types.GeneratorType):
+        if isinstance(ret, collections.Iterable) or isinstance(ret, types.GeneratorType):
             start_response(ctx.response.status, ctx.response.headers)
             return ret
         # ret to response_text:
