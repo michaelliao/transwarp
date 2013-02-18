@@ -24,7 +24,7 @@ def smtp(host, port=None, username=None, passwd=None, use_tls=False):
     e.g.:
     ('smtp.example.com', 25, 'user', 'passw0rd', False)
     '''
-    if port is None:
+    if port is None or port==0:
         port = 465 if use_tls else 25
     return (host, port, username, passwd, use_tls)
 
@@ -79,7 +79,7 @@ def send_mail(smtp_cfg, from_addr, to_addrs, subject='', body='', cc_addrs=None,
     Send email.
 
     Args:
-        smtp_cfg: SmtpConfig instance.
+        smtp_cfg: tuple of (host, port, username, passwd, use_tls).
         from_addr: a valid email address like 'someone@example.com', or 'Name <someone@example.com>'.
         to_addrs: a single str email address, or list.
         subject: email subject, default to ''.
