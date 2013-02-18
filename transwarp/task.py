@@ -6,11 +6,35 @@ __author__ = 'Michael Liao'
 '''
 Task queue module for distributed async task.
 
++----------------+
+|  Submit Task   |
++----------------+
+        |
+        |
+       \|/
++----------------+  dispatch task   +-------------+
+|                | ---------------> |             |
+| Task Scheduler |                  | Task Worker |
+|                | <--------------- |             |
++----------------+  task was done   +-------------+
+        |
+        |
+       \|/
++----------------+
+|    Callback    |
++----------------+
+
+POST /api/tasks/create
+Host: scheduler.transwarp.com
+Content-Type: application/json
+
+data={"the json data"}
+
 A task statuses:
 
 pending -> executing -> done -+-> notify
    |            |             |
-   +-------- retry ? -> error +
+   +--------<retry?> -> error +
 '''
 
 __SQL__ = '''
@@ -24,24 +48,24 @@ create table tasks (
     max_retry int not null,
     retried int not null,
     creation_time real not null,
-    execution_time real not null,
+    execution_id varchar(50) not null,
+    execution_plan_time real not null,
     execution_start_time real not null,
     execution_end_time real not null,
     execution_expired_time real not null,
     version bigint not null,
-    task_data blob not null,
-    task_result blob not null,
+    task_data text not null,
+    task_result text not null,
     primary key(id),
-    index(execution_time)
+    index(queue, execution_plan_time),
+    index(queue, status)
 );
 '''
 
-import os, sys, time, uuid, random, datetime, functools, threading, logging, collections
+import os, sys, time, json, random, logging
 
 from web import Dict
 import db
-
-logging.basicConfig(level=logging.INFO)
 
 _DEFAULT_QUEUE = 'default'
 
@@ -50,17 +74,39 @@ _EXECUTING = 'executing'
 _ERROR = 'error'
 _DONE = 'done'
 
-class ConflictError(StandardError):
+def _json_dumps(obj):
+    '''
+    Dumps any object as json string.
+
+    >>> class Person(object):
+    ...     def __init__(self, name):
+    ...         self.name = name
+
+    >>> _json_dumps([Person('Bob'), None])
+    '[{"name": "Bob"}, null]'
+    '''
+    def _dump_obj(obj):
+        if isinstance(obj, dict):
+            return obj
+        d = dict()
+        for k in dir(obj):
+            if not k.startswith('_'):
+                d[k] = getattr(obj, k)
+        return d
+    return json.dumps(obj, default=_dump_obj)
+
+class TaskError(StandardError):
     pass
 
-def _log(s):
-    logging.info(s)
-
-def cleanup(queue=None):
-    '''
-    Remove tasks that already done.
-    '''
+class ConflictError(TaskError):
     pass
+
+def cleanup(queue=None, days=7):
+    '''
+    Remove tasks that already done in N days before.
+    '''
+    done_time = time.time() - days * 86400
+    return db.update('delete from tasks where status=? and execution_end_time<?', _DONE, done_time)
 
 def get_tasks(queue, status=None, offset=0, limit=100):
     '''
@@ -80,19 +126,19 @@ def get_tasks(queue, status=None, offset=0, limit=100):
     if limit<1 or limit>100:
         raise ValueError('limit must be 1 - 100')
     if status:
-        return db.select('select * from tasks where queue=? and status=? order by execution_time limit ?,?', queue, status, offset, limit)
-    return db.select('select * from tasks where queue=? order by execution_time limit ?,?', queue, offset, limit)
+        return db.select('select * from tasks where queue=? and status=? order by execution_plan_time limit ?,?', queue, status, offset, limit)
+    return db.select('select * from tasks where queue=? order by execution_plan_time limit ?,?', queue, offset, limit)
 
-def create_task(queue, name, task_data=None, callback=None, max_retry=3, execution_time=None, timeout=60):
+def create_task(queue, name, task_data=None, callback=None, max_retry=3, execution_plan_time=None, timeout=60):
     '''
     Create a task.
 
-    >>> tid = create_task('sample_queue', 'sample_task', 'task data')
+    >>> tid = create_task('sample_queue', 'sample_task_name', dict(data=1))
     >>> f = fetch_task('sample_queue')
     >>> f.id==tid
     True
     >>> f.task_data
-    u'task data'
+    u'{"data": 1}'
     >>> f2 = fetch_task('sample_queue')
     >>> f2 is None
     True
@@ -112,8 +158,8 @@ def create_task(queue, name, task_data=None, callback=None, max_retry=3, executi
     if timeout <= 0:
         return dict(error='cannot_create_task', description='invalid timeout')
     current = time.time()
-    if execution_time is None:
-        execution_time = current
+    if execution_plan_time is None:
+        execution_plan_time = current
     task = dict( \
         id=db.next_str(), \
         queue=queue, \
@@ -124,43 +170,55 @@ def create_task(queue, name, task_data=None, callback=None, max_retry=3, executi
         max_retry=max_retry, \
         retried=0, \
         creation_time=current, \
-        execution_time=execution_time, \
+        execution_id='', \
+        execution_plan_time=execution_plan_time, \
         execution_start_time=0.0, \
         execution_end_time=0.0, \
         execution_expired_time=0.0, \
-        task_data=task_data,
-        task_result='',
+        task_data=_json_dumps(task_data),
+        task_result='null',
         version=0)
     db.insert('tasks', **task)
     return task['id']
 
-def _do_fetch_task(queue):
+def _do_fetch_task(queue, _debug=False):
     task = None
     current = time.time()
     with db.transaction():
-        tasks = db.select('select * from tasks where execution_time<? and queue=? and status=? order by execution_time limit ?', current, queue, _PENDING, 1)
+        tasks = db.select('select * from tasks where execution_plan_time<? and queue=? and status=? order by execution_plan_time limit ?', current, queue, _PENDING, 1)
         if tasks:
             task = tasks[0]
     if not task:
         return None
+    if _debug:
+        time.sleep(1)
     expires = current + task.timeout
+    execution_id = db.next_str()
     with db.transaction():
-        if 0==db.update('update tasks set status=?, execution_start_time=?, execution_expired_time=?, version=version+1 where id=? and version=?', _EXECUTING, current, expires, task.id, task.version):
+        if 0==db.update('update tasks set status=?, execution_id=?, execution_start_time=?, execution_expired_time=?, version=version+1 where id=? and version=?', _EXECUTING, execution_id, current, expires, task.id, task.version):
+            logging.info('version conflict: expect %d.' % task.version)
             raise ConflictError()
-    return Dict(id=task.id, queue=task.queue, name=task.name, task_data=task.task_data, version=task.version+1)
+    return Dict(id=task.id, execution_id=execution_id, queue=task.queue, name=task.name, task_data=task.task_data, version=task.version+1)
 
-def fetch_task(queue):
+def fetch_task(queue=None, _debug=False):
+    '''
+    Fetch a pending task.
+    '''
     if not queue:
         queue = _DEFAULT_QUEUE
     for n in range(3):
         try:
-            return _do_fetch_task(queue)
+            return _do_fetch_task(queue, _debug)
         except ConflictError:
-            sleep(random.random() / 4)
+            time.sleep(random.random() / 4)
     return None
 
-def set_task_result(task_id, success, task_result=''):
+def set_task_result(task_id, execution_id, success, task_result=''):
     task = db.select_one('select id, status, max_retry, retried from tasks where id=?', task_id)
+    if task.execution_id != execution_id:
+        raise TaskError('Task execution_id not match.')
+    if task.status != _EXECUTING:
+        raise TaskError('Task status is not executing')
     kw = dict()
     if success:
         kw['status'] = _DONE
@@ -177,17 +235,57 @@ def set_task_timeout(task_id):
 def delete_task(task_id):
     db.update('delete from tasks where id=?', task_id)
 
-def notify_task(task):
-    pass
+def notify_task(task_id):
+    t = db.select_one('select * from tasks where id=?', task_id)
+    # post http://... content-type: application/json
+    # {queue:xxx,name:xxx,result:{json}
 
 if __name__=='__main__':
-    sys.path.append('.')
-    dbpath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'doc_test.sqlite3.db')
-    _log(dbpath)
-    if os.path.isfile(dbpath):
-        os.remove(dbpath)
-    db.init('sqlite3', dbpath, '')
-    db.update('create table tasks (id text not null, queue text not null, name text not null, callback text not null, timeout integer not null, status text not null, max_retry integer not null, retried integer not null, creation_time real not null, execution_time real not null, execution_start_time real not null, execution_end_time real not null, execution_expired_time real not null, version integer not null, task_data text not null, task_result text not null);')
+    logging.basicConfig(level=logging.INFO)
+    db.init(db_type = 'mysql', \
+            db_schema = 'itranswarp', \
+            db_host = 'localhost', \
+            db_port = 3306, \
+            db_user = 'root', \
+            db_password = 'passw0rd', \
+            use_unicode = True, charset = 'utf8')
+    print 'init mysql...'
+    db.update('drop table if exists tasks')
+    db.update(__SQL__)
     import doctest
     doctest.testmod()
-    os.remove(dbpath)
+    # multi-threading test:
+    import threading
+    thread_results = []
+    def fetch():
+        t = fetch_task('locktest', True)
+        s = '%s fetched %s' % (threading.currentThread().name, t and t.name or 'None')
+        thread_results.append(s)
+
+    tid1 = create_task('locktest', 'task_1', '')
+    tid2 = create_task('locktest', 'task_2', '')
+    t1 = threading.Thread(target=fetch, name='Thread-001')
+    t2 = threading.Thread(target=fetch, name='Thread-002')
+    t3 = threading.Thread(target=fetch, name='Thread-003')
+    t1.start(); t2.start(); t3.start()
+    t1.join(); t2.join(); t3.join()
+    print thread_results
+    # testing insert 1000 tasks:
+    print 'creating 1000 tasks...'
+    current = time.time()
+    for i in range(1000):
+        create_task('multiinsert', 'task-%d' % i, 'task-data-%d' % i)
+    print 'creating 1000 tasks takes %0.3f seconds.' % (time.time() - current)
+    # testing fetch tasks:
+    print 'fetching 1000 tasks...'
+    current = time.time()
+    for i in range(1000):
+        t = fetch_task('multiinsert')
+        if t is None:
+            print 'ERROR when fetching task %d.' % i
+    print 'fetching 1000 tasks takes %0.3f seconds.' % (time.time() - current)
+    t = fetch_task('multiinsert')
+    if t:
+        print 'ERROR when fetching 1001 task.'
+    #print 'cleanup...'
+    #db.update('delete from tasks')
