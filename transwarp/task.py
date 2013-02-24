@@ -62,7 +62,7 @@ create table tasks (
 );
 '''
 
-import os, sys, time, json, random, logging
+import os, sys, time, random, logging
 
 from web import Dict
 import db
@@ -151,8 +151,6 @@ def create_task(queue, name, task_data=None, callback=None, max_retry=3, executi
         callback = ''
     if callback and not callback.startswith('http://') and not callback.startswith('https://'):
         return dict(error='cannot_create_task', description='invalid callback')
-    if task_data is None:
-        task_data = ''
     if max_retry < 0:
         max_retry = 0
     if timeout <= 0:
@@ -175,7 +173,7 @@ def create_task(queue, name, task_data=None, callback=None, max_retry=3, executi
         execution_start_time=0.0, \
         execution_end_time=0.0, \
         execution_expired_time=0.0, \
-        task_data=_json_dumps(task_data),
+        task_data=task_data,
         task_result='null',
         version=0)
     db.insert('tasks', **task)
@@ -214,7 +212,7 @@ def fetch_task(queue=None, _debug=False):
     return None
 
 def set_task_result(task_id, execution_id, success, task_result=''):
-    task = db.select_one('select id, status, max_retry, retried from tasks where id=?', task_id)
+    task = db.select_one('select id, execution_id, status, max_retry, retried from tasks where id=?', task_id)
     if task.execution_id != execution_id:
         raise TaskError('Task execution_id not match.')
     if task.status != _EXECUTING:
