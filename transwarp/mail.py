@@ -109,6 +109,8 @@ def send_mail(smtp_cfg, from_addr, to_addrs, subject='', body='', cc_addrs=None,
     ...        ('goodday.gif', StringIO(base64.b64decode(giffile))),
     ...        ('goodday.zip', StringIO(base64.b64decode(zipfile)))))
     '''
+    logging.debug('smtp config: %s' % str(smtp_cfg))
+    logging.debug('Send mail from %s to %s...' % (from_addr, to_addrs))
     from_addr = _format_addr(from_addr)
     to_addrs = _ensure_addr_list(to_addrs)
 
@@ -141,13 +143,14 @@ def send_mail(smtp_cfg, from_addr, to_addrs, subject='', body='', cc_addrs=None,
 
     host, port, u, p, use_tls = smtp_cfg
 
-    server = smtplib.SMTP('%s:%s' % (host, port))
+    server = smtplib.SMTP('%s:%s' % (host, port), timeout=10)
     if use_tls:
         server.starttls()
     if u and p:
         server.login(u, p)
     server.sendmail(from_addr, to_addrs, msg.as_string())
     server.quit()
+    logging.debug('Mail sent ok.')
 
 if __name__=='__main__':
     import doctest
