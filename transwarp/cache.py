@@ -9,6 +9,11 @@ A simple cache interface.
 
 import os, time, datetime, functools, logging
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 class DummyClient(object):
 
     def set(self, key, value, expires=0):
@@ -51,6 +56,9 @@ class MemcacheClient(object):
         >>> c.set(key, u'Python\u4e2d\u6587')
         >>> c.get(key)
         u'Python\u4e2d\u6587'
+        >>> c.set(key, [1, 2, 3, 4, 5])
+        >>> c.get(key)
+        [1, 2, 3, 4, 5]
         >>> c.set(key, 'Expires after 1 sec', 1)
         >>> c.get(key)
         'Expires after 1 sec'
@@ -169,13 +177,10 @@ class MemcacheClient(object):
             r = 0
         return r
 
-def _redis_after_get(r):
-    if isinstance(r, str):
-        if r.startswith('str:'):
-            return r[4:]
-        if r.startswith('uni:'):
-            return r[4:].decode('utf-8')
-    return r
+def _safe_pickle_loads(r):
+    if r is None:
+        return None
+    return pickle.loads(r)
 
 class RedisClient(object):
 
@@ -183,7 +188,7 @@ class RedisClient(object):
         import redis
         self._client = redis.StrictRedis(host=servers)
 
-    def set(self, key, value, expires=0):
+    def set(self, key, value, expires=0, use_pickle=True):
         '''
         Set object with key.
 
@@ -197,6 +202,9 @@ class RedisClient(object):
         >>> c.set(key, u'Python\u4e2d\u6587')
         >>> c.get(key)
         u'Python\u4e2d\u6587'
+        >>> c.set(key, ['A', 'B', 'C'])
+        >>> c.get(key)
+        ['A', 'B', 'C']
         >>> c.set(key, 'Expires after 1 sec', 1)
         >>> c.get(key)
         'Expires after 1 sec'
@@ -204,11 +212,8 @@ class RedisClient(object):
         >>> c.get(key, 'Not Exist')
         'Not Exist'
         '''
-        if isinstance(value, str):
-            value = 'str:%s' % value
-        if isinstance(value, unicode):
-            value = 'uni:%s' % value.encode('utf-8')
-        self._client.set(key, value)
+        logging.debug('set cache: key = %s' % key)
+        self._client.set(key, pickle.dumps(value) if use_pickle else value)
         if expires:
             self._client.expire(key, expires)
 
@@ -227,17 +232,18 @@ class RedisClient(object):
         >>> c.get(key)
         >>> c.get(key, 'DEFAULT_REDIS')
         'DEFAULT_REDIS'
-        >>> c.set(key, 'hello redis')
+        >>> c.set(key, u'hello redis')
         >>> c.get(key)
-        'hello redis'
+        u'hello redis'
         >>> c.set(key, 12345)
         >>> c.get(key)
-        '12345'
+        12345
         '''
+        logging.debug('get cache: key = %s' % key)
         r = self._client.get(key)
         if r is None:
             return default
-        return _redis_after_get(r)
+        return pickle.loads(r)
 
     def gets(self, *keys):
         '''
@@ -259,7 +265,7 @@ class RedisClient(object):
         >>> c.gets(key1, key2, key3)
         ['Key1', None, 'Key3']
         '''
-        return map(_redis_after_get, self._client.mget(keys))
+        return map(_safe_pickle_loads, self._client.mget(keys))
 
     def delete(self, key):
         '''
@@ -291,7 +297,7 @@ class RedisClient(object):
         1
         >>> c.incr(key)
         2
-        >>> c.set(key, 100)
+        >>> c.set(key, 100, use_pickle=False)
         >>> c.incr(key)
         101
         '''
@@ -310,7 +316,7 @@ class RedisClient(object):
         -1
         >>> c.decr(key)
         -2
-        >>> c.set(key, 100)
+        >>> c.set(key, 100, use_pickle=False)
         >>> c.decr(key)
         99
         '''
