@@ -52,18 +52,18 @@ def next_int():
 def next_str():
     return '%018d%s' % (int(time.time()*100000), uuid.uuid4().hex)
 
-class _Dict(dict):
+class Dict(dict):
     '''
     Simple dict but support access as x.y style.
 
-    >>> d1 = _Dict()
+    >>> d1 = Dict()
     >>> d1['x'] = 100
     >>> d1.x
     100
     >>> d1.y = 200
     >>> d1['y']
     200
-    >>> d2 = _Dict(a=1, b=2, c='3')
+    >>> d2 = Dict(a=1, b=2, c='3')
     >>> d2.c
     '3'
     >>> d2['empty']
@@ -73,8 +73,8 @@ class _Dict(dict):
     >>> d2.empty
     Traceback (most recent call last):
         ...
-    KeyError: 'empty'
-    >>> d3 = _Dict(('a', 'b', 'c'), (1, 2, 3))
+    AttributeError: 'Dict' object has no attribute 'empty'
+    >>> d3 = Dict(('a', 'b', 'c'), (1, 2, 3))
     >>> d3.a
     1
     >>> d3.b
@@ -83,12 +83,15 @@ class _Dict(dict):
     3
     '''
     def __init__(self, names=(), values=(), **kw):
-        super(_Dict, self).__init__(**kw)
+        super(Dict, self).__init__(**kw)
         for k, v in zip(names, values):
             self[k] = v
 
     def __getattr__(self, key):
-        return self[key]
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
 
     def __setattr__(self, key, value):
         self[key] = value
@@ -289,8 +292,8 @@ def _select(sql, unique, *args):
                 raise NoResultError('Empty result')
             if cursor.fetchone():
                 raise MultiResultsError('Expect unique result')
-            return _Dict(names, values)
-        return [_Dict(names, x) for x in cursor.fetchall()]
+            return Dict(names, values)
+        return [Dict(names, x) for x in cursor.fetchall()]
     finally:
         if cursor:
             cursor.close()
