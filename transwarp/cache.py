@@ -180,7 +180,11 @@ class MemcacheClient(object):
 def _safe_pickle_loads(r):
     if r is None:
         return None
-    return pickle.loads(r)
+    try:
+        return pickle.loads(r)
+    except pickle.UnpicklingError:
+        pass
+    return None
 
 class RedisClient(object):
 
@@ -243,7 +247,7 @@ class RedisClient(object):
         r = self._client.get(key)
         if r is None:
             return default
-        return pickle.loads(r)
+        return _safe_pickle_loads(r)
 
     def gets(self, *keys):
         '''
