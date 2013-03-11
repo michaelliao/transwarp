@@ -119,7 +119,7 @@ def _db_connect():
 
 _db_convert = '?'
 
-class DbCtx(threading.local):
+class _DbCtx(threading.local):
     '''
     Thread local object that holds connection info.
     '''
@@ -134,8 +134,9 @@ class DbCtx(threading.local):
 
     def cleanup(self):
         _log('cleanup connection...')
-        self.connection.close()
+        conn = self.connection
         self.connection = None
+        conn.close()
 
     def open_cursor(self):
         '''
@@ -143,7 +144,7 @@ class DbCtx(threading.local):
         '''
         return self.connection.cursor()
 
-_db_ctx = DbCtx()
+_db_ctx = _DbCtx()
 
 class _Connection(object):
     '''
@@ -203,6 +204,11 @@ class _Transaction(object):
 
     def __enter__(self):
         global _db_ctx
+        self.should_close_conn = False
+        if _db_ctx.connection is None:
+            # needs open a connection first:
+            _db_ctx.init()
+            self.should_close_conn = True
         _db_ctx.transactions = _db_ctx.transactions + 1
         _log('begin transaction...' if _db_ctx.transactions==1 else 'join current transaction...')
         return self
@@ -210,11 +216,15 @@ class _Transaction(object):
     def __exit__(self, exctype, excvalue, traceback):
         global _db_ctx
         _db_ctx.transactions = _db_ctx.transactions - 1
-        if _db_ctx.transactions==0:
-            if exctype is None:
-                self.commit()
-            else:
-                self.rollback()
+        try:
+            if _db_ctx.transactions==0:
+                if exctype is None:
+                    self.commit()
+                else:
+                    self.rollback()
+        finally:
+            if self.should_close_conn:
+                _db_ctx.cleanup()
 
     def commit(self):
         global _db_ctx
@@ -241,9 +251,7 @@ def transaction():
     with transaction():
         pass
     '''
-    # make sure a transaction is associated a valid connection:
-    with _Connection():
-        return _Transaction()
+    return _Transaction()
 
 def with_transaction(func):
     '''
@@ -268,10 +276,8 @@ def with_transaction(func):
     '''
     @functools.wraps(func)
     def _wrapper(*args, **kw):
-        # make sure a transaction is associated a valid connection:
-        with _Connection():
-            with _Transaction():
-                return func(*args, **kw)
+        with _Transaction():
+            return func(*args, **kw)
     return _wrapper
 
 def _select(sql, unique, *args):
@@ -520,6 +526,7 @@ def init(db_type, db_schema, db_host, db_port=0, db_user=None, db_password=None,
         raise DBError('Unsupported db: %s' % db_type)
 
 if __name__=='__main__':
+    logging.basicConfig(level=logging.DEBUG)
     sys.path.append('.')
     dbpath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'doc_test.sqlite3.db')
     _log(dbpath)
