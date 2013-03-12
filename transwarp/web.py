@@ -8,7 +8,7 @@ A simple, lightweight, WSGI-compatible web framework.
 __author__ = 'Michael Liao'
 
 import __builtin__
-import types, sys, os, re, cgi, sys, base64, json, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
+import types, sys, os, re, cgi, sys, base64, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
 
 # thread local object for storing request and response.
 ctx = threading.local()
