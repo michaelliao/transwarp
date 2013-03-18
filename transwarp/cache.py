@@ -19,11 +19,20 @@ class DummyClient(object):
     def set(self, key, value, expires=0):
         pass
 
+    def setint(self, key, value, expires=0):
+        pass
+
     def get(self, key, default=None):
         return default
 
     def gets(self, *keys):
         return [None] * len(keys)
+
+    def getint(self, key, default=0):
+        return default
+
+    def getints(self, *keys):
+        return [0] * len(keys)
 
     def delete(self, key):
         pass
@@ -68,6 +77,8 @@ class MemcacheClient(object):
         '''
         self._client.set(key, value, expires)
 
+    setint = set
+
     def get(self, key, default=None):
         '''
         Get object by key.
@@ -89,6 +100,21 @@ class MemcacheClient(object):
         '''
         r = self._client.get(key)
         return default if r is None else r
+
+    def getint(self, key, default=0):
+        '''
+        Get int.
+
+        >>> key = uuid.uuid4().hex
+        >>> c = MemcacheClient('localhost:11211')
+        >>> c.getint(key)
+        0
+        >>> c.setint(key, 101)
+        >>> c.getint(key)
+        101
+        '''
+        r = self._client.get(key)
+        return _safe_int(r, default)
 
     def gets(self, *keys):
         '''
@@ -112,6 +138,24 @@ class MemcacheClient(object):
         '''
         r = self._client.get_multi(keys)
         return map(lambda k: r.get(k), keys)
+
+    def getints(self, *keys):
+        '''
+        Get ints by keys.
+
+        >>> key1 = uuid.uuid4().hex
+        >>> key2 = uuid.uuid4().hex
+        >>> key3 = uuid.uuid4().hex
+        >>> c = MemcacheClient('localhost:11211')
+        >>> c.getints(key1, key2, key3)
+        [0, 0, 0]
+        >>> c.setint(key1, 11)
+        >>> c.setint(key3, -99)
+        >>> c.getints(key1, key2, key3)
+        [11, 0, -99]
+        '''
+        r = self._client.get_multi(keys)
+        return map(lambda k: _safe_int(r.get(k)), keys)
 
     def delete(self, key):
         '''
@@ -186,13 +230,24 @@ def _safe_pickle_loads(r):
         pass
     return None
 
+def _safe_int(r, default=0):
+    if r is None:
+        return default
+    try:
+        return int(r)
+    except ValueError:
+        return default
+
 class RedisClient(object):
 
     def __init__(self, servers, debug=False):
         import redis
         self._client = redis.StrictRedis(host=servers)
 
-    def set(self, key, value, expires=0, use_pickle=True):
+    def setint(self, key, value, expires=0):
+        self._set(key, value, expires, use_pickle=False)
+
+    def set(self, key, value, expires=0):
         '''
         Set object with key.
 
@@ -217,6 +272,9 @@ class RedisClient(object):
         'Not Exist'
         '''
         logging.debug('set cache: key = %s' % key)
+        self._set(key, value, expires, use_pickle=True)
+
+    def _set(self, key, value, expires, use_pickle):
         self._client.set(key, pickle.dumps(value) if use_pickle else value)
         if expires:
             self._client.expire(key, expires)
@@ -288,6 +346,27 @@ class RedisClient(object):
         '''
         self._client.delete(key)
 
+    def getints(self, *keys):
+        '''
+        get ints by keys.
+
+        >>> key1 = uuid.uuid4().hex
+        >>> key2 = uuid.uuid4().hex
+        >>> key3 = uuid.uuid4().hex
+        >>> c = RedisClient('localhost')
+        >>> c.getints(key1, key2, key3)
+        [0, 0, 0]
+        >>> c.setint(key1, 100)
+        >>> c.setint(key2, 200)
+        >>> c.setint(key3, -300)
+        >>> c.getints(key1, key2, key3)
+        [100, 200, -300]
+        '''
+        return map(_safe_int, self._client.mget(keys))
+
+    def getint(self, key, default=0):
+        return _safe_int(self._client.get(key), default)
+
     def incr(self, key):
         '''
         Increase counter.
@@ -301,9 +380,13 @@ class RedisClient(object):
         1
         >>> c.incr(key)
         2
-        >>> c.set(key, 100, use_pickle=False)
+        >>> c.setint(key, 100)
         >>> c.incr(key)
         101
+        >>> c.getint(key)
+        101
+        >>> c.getint(key + '-no', 10)
+        10
         '''
         return self._client.incr(key)
 
@@ -320,7 +403,7 @@ class RedisClient(object):
         -1
         >>> c.decr(key)
         -2
-        >>> c.set(key, 100, use_pickle=False)
+        >>> c.setint(key, 100)
         >>> c.decr(key)
         99
         '''
