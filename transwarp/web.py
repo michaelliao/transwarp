@@ -1639,14 +1639,18 @@ class WSGIApplication(object):
 
     def _exec(self, r, kw, start_response):
         global ctx
+        exec_start = time.time()
         try:
             ret = r.execute() if kw is None else r.execute(**kw)
         except RedirectError, e:
+            ctx.response.set_header('X-Execution-Time', str(time.time() - exec_start))
             ctx.response.set_header('Location', e.location)
             start_response(e.status, ctx.response.headers)
             return ()
         except Exception, e:
             return self.error_handler(e, start_response, self._debug)
+        ctx.response.set_header('X-Execution-Time', str(time.time() - exec_start))
+
         if isinstance(ret, collections.Iterable) or isinstance(ret, types.GeneratorType):
             start_response(ctx.response.status, ctx.response.headers)
             return ret
