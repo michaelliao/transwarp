@@ -510,7 +510,7 @@ def static_file_handler(*args, **kw):
     pathinfo = ctx.request.path_info
     if not pathinfo.startswith('/'):
         raise HttpError('403')
-    fpath = os.path.join(ctx.document_root, pathinfo[1:])
+    fpath = os.path.join(ctx.application.document_root, pathinfo[1:])
     _log('static file: %s' % fpath)
     if not os.path.isfile(fpath):
         raise HttpError(404)
@@ -1630,7 +1630,8 @@ class WSGIApplication(object):
         self.get_static_routes, self.post_static_routes, self.get_re_routes, self.post_re_routes = self._parse_routes(self.modules, self._debug)
         self.error_handler = _default_error_handler
         self.document_root = document_root
-        _log('load document_root: %s' % str(self.document_root))
+        self._application = Dict(document_root=document_root, debug=self._debug)
+        _log('load application: %s' % str(self._application))
 
         if isinstance(template_engine, basestring):
             self.template_render = _install_template_engine(template_engine, self.document_root)
@@ -1699,15 +1700,14 @@ class WSGIApplication(object):
             return self.error_handler(HttpError(404), start_response, self._debug)
 
         global ctx
-        ctx.document_root = self.document_root or environ.get('DOCUMENT_ROOT', '')
+        ctx.application = self._application
         ctx.server_name = environ.get('SERVER_NAME', '')
         ctx.request = Request(environ)
         ctx.response = Response()
-        _log('ctx.document_root: %s' % ctx.document_root)
         try:
             return self._filters(r, kw, start_response)
         finally:
-            del ctx.document_root
+            del ctx.application
             del ctx.server_name
             del ctx.request
             del ctx.response
