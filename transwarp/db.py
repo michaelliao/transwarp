@@ -592,7 +592,7 @@ class VersionField(Field):
     def __init__(self, name=None):
         super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True)
 
-_triggers = ('post_insert', 'post_update', 'post_delete')
+_triggers = ('post_get_by_id', 'post_insert', 'post_update', 'post_delete')
 
 class ModelMetaclass(type):
     '''
@@ -658,14 +658,14 @@ class Model(object):
     >>> u.insert()
     >>> u.email
     'orm@db.org'
-    >>> f = User.by_id(10190)
+    >>> f = User.get_by_id(10190)
     >>> f.name
     u'Michael'
     >>> f.email
     u'orm@db.org'
     >>> f.email = 'changed@db.org'
     >>> f.update() # change email but email is non-updatable!
-    >>> g = User.by_id(10190)
+    >>> g = User.get_by_id(10190)
     >>> g.email
     u'orm@db.org'
     >>> g.delete()
@@ -680,7 +680,7 @@ class Model(object):
             setattr(self, k, v)
 
     @classmethod
-    def by_id(cls, pk):
+    def get_by_id(cls, pk):
         d = select_one('select * from %s where %s=?' % (cls.__table__, cls.__primary_key__.name), pk)
         return cls(**d)
 
