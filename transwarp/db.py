@@ -626,6 +626,9 @@ class ModelMetaclass(type):
                     if v.updatable:
                         _log('NOTE: change primary key to non-updatable.')
                         v.updatable = False
+                    if v.nullable:
+                        _log('NOTE: change primary key to non-nullable.')
+                        v.nullable = False
                     primary_key = v
                 mappings[k] = v
         # check exist of primary key:
