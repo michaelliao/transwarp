@@ -737,18 +737,6 @@ class Model(object):
                 args.append(arg)
         _update('insert into %s (%s) values (%s)' % (self.__table__, ','.join(fields), ','.join(params)), args)
 
-    def pre_update(self):
-        print('pre-update...')
-
-    def post_update(self):
-        print('updated!')
-
-    def pre_insert(self):
-        print('pre-insert...')
-
-    def post_insert(self):
-        print('inserted!')
-
 if __name__=='__main__':
     logging.basicConfig(level=logging.DEBUG)
     sys.path.append('.')
