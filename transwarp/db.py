@@ -414,7 +414,8 @@ def select(sql, *args):
     '''
     return _select(sql, False, *args)
 
-def _update(sql, args):
+@with_connection
+def _update(sql, args, post_fn=None):
     global _db_ctx, _db_convert
     cursor = None
     if _db_convert != '?':
@@ -428,12 +429,12 @@ def _update(sql, args):
             # no transaction enviroment:
             _log('auto commit')
             _db_ctx.connection.commit()
+            post_fn and post_fn()
         return r
     finally:
         if cursor:
             cursor.close()
 
-@with_connection
 def insert(table, **kw):
     '''
     Execute insert SQL.
@@ -453,7 +454,6 @@ def insert(table, **kw):
     sql = 'insert into %s (%s) values (%s)' % (table, ','.join(cols), ','.join([_db_convert for i in range(len(cols))]))
     return _update(sql, args)
 
-@with_connection
 def update(sql, *args):
     '''
     Execute update SQL.
@@ -551,11 +551,209 @@ def init(db_type, db_schema, db_host, db_port=0, db_user=None, db_password=None,
     else:
         raise DBError('Unsupported db: %s' % db_type)
 
+class Field(object):
+
+    def __init__(self, **kw):
+        self.name = kw.get('name', None)
+        self.default = kw.get('default', None)
+        self.primary_key = kw.get('primary_key', False)
+        self.nullable = kw.get('nullable', True)
+        self.updatable = kw.get('updatable', True)
+        self.insertable = kw.get('insertable', True)
+
+    def __str__(self):
+        s = ['<%s:%s,default(%s),' % (self.__class__.__name__, self.name, self.default)]
+        self.nullable and s.append('N')
+        self.updatable and s.append('U')
+        self.insertable and s.append('I')
+        s.append('>')
+        return ''.join(s)
+
+class StringField(Field):
+    pass
+
+class IntegerField(Field):
+    pass
+
+class FloatField(Field):
+    pass
+
+class BooleanField(Field):
+    pass
+
+class DateTimeField(Field):
+    pass
+
+class BlobField(Field):
+    pass
+
+class VersionField(Field):
+
+    def __init__(self, name=None):
+        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True)
+
+_triggers = ('post_insert', 'post_update', 'post_delete')
+
+class ModelMetaclass(type):
+    '''
+    Metaclass for model objects.
+    '''
+
+    def __new__(cls, name, bases, attrs):
+        # skip base Model class:
+        if name=='Model':
+            return type.__new__(cls, name, bases, attrs)
+
+        # store all subclasses info:
+        if not hasattr(cls, 'subclasses'):
+            cls.subclasses = {}
+        if not name in cls.subclasses:
+            cls.subclasses[name] = name
+        else:
+            raise TypeError('Cannot redefine class: %s' % name)
+
+        mappings = dict()
+        primary_key = None
+        for k, v in attrs.iteritems():
+            if isinstance(v, Field):
+                if not v.name:
+                    v.name = k
+                _log('Found mapping: %s => %s' % (k, v))
+                # check duplicate primary key:
+                if v.primary_key:
+                    if primary_key:
+                        raise TypeError('Cannot define more than 1 primary key in class: %s' % name)
+                    if v.updatable:
+                        _log('NOTE: change primary key to non-updatable.')
+                        v.updatable = False
+                    primary_key = v
+                mappings[k] = v
+        # check exist of primary key:
+        if not primary_key:
+            raise TypeError('Primary key not defined in class: %s' % name)
+        for k in mappings.iterkeys():
+            attrs.pop(k)
+        attrs['__table__'] = name.lower()
+        attrs['__mappings__'] = mappings
+        attrs['__primary_key__'] = primary_key
+        for trigger in _triggers:
+            if not trigger in attrs:
+                attrs[trigger] = None
+        return type.__new__(cls, name, bases, attrs)
+
+class Model(object):
+    '''
+    Base class for ORM.
+
+    >>> class User(Model):
+    ...     id = IntegerField(primary_key=True)
+    ...     name = StringField()
+    ...     email = StringField(updatable=False)
+    ...     passwd = StringField()
+    ...     last_modified = FloatField()
+    >>> u = User(id=10190, name='Michael', email='orm@db.org', passwd='******', last_modified=123.456)
+    >>> u.insert()
+    >>> u.email
+    'orm@db.org'
+    >>> f = User.by_id(10190)
+    >>> f.name
+    u'Michael'
+    >>> f.email
+    u'orm@db.org'
+    >>> f.email = 'changed@db.org'
+    >>> f.update() # change email but email is non-updatable!
+    >>> g = User.by_id(10190)
+    >>> g.email
+    u'orm@db.org'
+    >>> g.delete()
+    >>> len(select('select * from user where id=10190'))
+    0
+    '''
+
+    __metaclass__ = ModelMetaclass
+
+    def __init__(self, **kw):
+        for k, v in kw.iteritems():
+            setattr(self, k, v)
+
+    @classmethod
+    def by_id(cls, pk):
+        d = select_one('select * from %s where %s=?' % (cls.__table__, cls.__primary_key__.name), pk)
+        return cls(**d)
+
+    @classmethod
+    def select_one(cls, where, *args):
+        '''
+        Find by where clause and return one and only one result.
+        '''
+        d = select_one('select * from %s where %s' % (cls.__table__, where), *args)
+        return cls(**d)
+
+    @classmethod
+    def select(cls, where, *args):
+        '''
+        Find by where clause and return list.
+        '''
+        L = select('select * from %s where %s' % (cls.__table__, where), *args)
+        return [cls(**d) for d in L]
+
+    @classmethod
+    def count(cls, where, *args):
+        '''
+        Find by 'select count(*) from where ... ' and return one and only one result.
+        '''
+        return select_int('select count(%s) from %s where %s' % (cls.__primary_key__.name, cls.__table__, where), *args)
+
+    def update(self):
+        kw = {}
+        for k, v in self.__mappings__.iteritems():
+            if v.updatable:
+                if hasattr(self, k):
+                    arg = getattr(self, k)
+                else:
+                    arg = v.default
+                    setattr(self, k, arg)
+                kw[k] = arg
+        pk = self.__primary_key__.name
+        update_kw(self.__table__, '%s=?' % pk, getattr(self, pk), **kw)
+
+    def delete(self):
+        pk = self.__primary_key__.name
+        args = (getattr(self, pk), )
+        _update('delete from %s where %s=?' % (self.__table__, pk), args)
+
+    def insert(self):
+        fields = []
+        params = []
+        args = []
+        for k, v in self.__mappings__.iteritems():
+            if v.insertable:
+                fields.append(v.name)
+                params.append('?')
+                arg = getattr(self, k, None)
+                if arg is None:
+                    arg = v.default
+                    setattr(self, k, arg)
+                args.append(arg)
+        _update('insert into %s (%s) values (%s)' % (self.__table__, ','.join(fields), ','.join(params)), args)
+
+    def pre_update(self):
+        print('pre-update...')
+
+    def post_update(self):
+        print('updated!')
+
+    def pre_insert(self):
+        print('pre-insert...')
+
+    def post_insert(self):
+        print('inserted!')
+
 if __name__=='__main__':
     logging.basicConfig(level=logging.DEBUG)
     sys.path.append('.')
     dbpath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'doc_test.sqlite3.db')
-    _log(dbpath)
+    print(dbpath)
     if os.path.isfile(dbpath):
         os.remove(dbpath)
     init('sqlite3', dbpath, '')
