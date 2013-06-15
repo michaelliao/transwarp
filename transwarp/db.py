@@ -659,12 +659,16 @@ class Model(object):
     ...     email = StringField(updatable=False)
     ...     passwd = StringField(default=lambda: '******')
     ...     last_modified = FloatField()
-    >>> u = User(id=10190, name='Michael', email='orm@db.org', last_modified=123.456)
+    ...     def pre_insert(self):
+    ...         self.last_modified = time.time()
+    >>> u = User(id=10190, name='Michael', email='orm@db.org')
     >>> u.insert()
     >>> u.email
     'orm@db.org'
     >>> u.passwd
     '******'
+    >>> u.last_modified > (time.time() - 2)
+    True
     >>> f = User.get_by_id(10190)
     >>> f.name
     u'Michael'
@@ -750,6 +754,7 @@ class Model(object):
                     arg = v.default
                     setattr(self, k, arg)
                 args.append(arg)
+        self.pre_insert and self.pre_insert()
         _update('insert into %s (%s) values (%s)' % (self.__table__, ','.join(fields), ','.join(params)), args)
 
 if __name__=='__main__':
