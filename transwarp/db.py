@@ -555,11 +555,16 @@ class Field(object):
 
     def __init__(self, **kw):
         self.name = kw.get('name', None)
-        self.default = kw.get('default', None)
+        self._default = kw.get('default', None)
         self.primary_key = kw.get('primary_key', False)
         self.nullable = kw.get('nullable', True)
         self.updatable = kw.get('updatable', True)
         self.insertable = kw.get('insertable', True)
+
+    @property
+    def default(self):
+        d = self._default
+        return d() if callable(d) else d
 
     def __str__(self):
         s = ['<%s:%s,default(%s),' % (self.__class__.__name__, self.name, self.default)]
@@ -592,7 +597,7 @@ class VersionField(Field):
     def __init__(self, name=None):
         super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True)
 
-_triggers = ('post_get_by_id', 'post_insert', 'post_update', 'post_delete')
+_triggers = ('post_get_by_id', 'pre_insert', 'post_insert', 'pre_update', 'post_update', 'pre_delete', 'post_delete')
 
 class ModelMetaclass(type):
     '''
@@ -652,12 +657,14 @@ class Model(object):
     ...     id = IntegerField(primary_key=True)
     ...     name = StringField()
     ...     email = StringField(updatable=False)
-    ...     passwd = StringField()
+    ...     passwd = StringField(default=lambda: '******')
     ...     last_modified = FloatField()
-    >>> u = User(id=10190, name='Michael', email='orm@db.org', passwd='******', last_modified=123.456)
+    >>> u = User(id=10190, name='Michael', email='orm@db.org', last_modified=123.456)
     >>> u.insert()
     >>> u.email
     'orm@db.org'
+    >>> u.passwd
+    '******'
     >>> f = User.get_by_id(10190)
     >>> f.name
     u'Michael'
@@ -693,11 +700,16 @@ class Model(object):
         return cls(**d)
 
     @classmethod
-    def select(cls, where, *args):
+    def select(cls, where, order_by, *args):
         '''
         Find by where clause and return list.
         '''
-        L = select('select * from %s where %s' % (cls.__table__, where), *args)
+        sql = ['select * from %s' % cls.__table__]
+        if where:
+            sql.append('where %s' % where)
+        if order_by:
+            sql.append('order by %s' % order_by)
+        L = select(' '.join(sql), *args)
         return [cls(**d) for d in L]
 
     @classmethod
