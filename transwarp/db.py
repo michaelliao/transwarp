@@ -734,6 +734,7 @@ class Model(object):
                     setattr(self, k, arg)
                 kw[k] = arg
         pk = self.__primary_key__.name
+        self.pre_update and self.pre_update()
         update_kw(self.__table__, '%s=?' % pk, getattr(self, pk), **kw)
 
     def delete(self):
