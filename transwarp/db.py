@@ -107,13 +107,7 @@ class Dict(dict):
 class DBError(Exception):
     pass
 
-class MultiResultsError(DBError):
-    pass
-
 class MultiColumnsError(DBError):
-    pass
-
-class NoResultError(DBError):
     pass
 
 def _log(s):
@@ -306,7 +300,7 @@ def with_transaction(func):
             return func(*args, **kw)
     return _wrapper
 
-def _select(sql, unique, *args):
+def _select(sql, first, *args):
     ' execute select SQL and return unique result or list results.'
     global _db_ctx, _db_convert
     cursor = None
@@ -318,12 +312,10 @@ def _select(sql, unique, *args):
         cursor.execute(sql, args)
         if cursor.description:
             names = [x[0] for x in cursor.description]
-        if unique:
+        if first:
             values = cursor.fetchone()
             if not values:
-                raise NoResultError('Empty result')
-            if cursor.fetchone():
-                raise MultiResultsError('Expect unique result')
+                return None
             return Dict(names, values)
         return [Dict(names, x) for x in cursor.fetchall()]
     finally:
@@ -333,9 +325,9 @@ def _select(sql, unique, *args):
 @with_connection
 def select_one(sql, *args):
     '''
-    Execute select SQL and expected one and only one result. 
-    If no result found, NoResultError raises. 
-    If multiple results found, MultiResultsError raises.
+    Execute select SQL and expected one result. 
+    If no result found, return None.
+    If multiple results found, the first one returned.
 
     >>> u1 = dict(id=100, name='Alice', email='alice@test.org', passwd='ABC-12345', last_modified=time.time())
     >>> u2 = dict(id=101, name='Sarah', email='sarah@test.org', passwd='ABC-12345', last_modified=time.time())
@@ -347,13 +339,9 @@ def select_one(sql, *args):
     >>> u.name
     u'Alice'
     >>> select_one('select * from user where email=?', 'abc@email.com')
-    Traceback (most recent call last):
-        ...
-    NoResultError: Empty result
-    >>> select_one('select * from user where passwd=?', 'ABC-12345')
-    Traceback (most recent call last):
-        ...
-    MultiResultsError: Expect unique result
+    >>> u2 = select_one('select * from user where passwd=? order by email', 'ABC-12345')
+    >>> u2.name
+    u'Alice'
     '''
     return _select(sql, True, *args)
 
@@ -361,8 +349,6 @@ def select_one(sql, *args):
 def select_int(sql, *args):
     '''
     Execute select SQL and expected one int and only one int result. 
-    If no result found, NoResultError raises. 
-    If multiple results found, MultiResultsError raises.
 
     >>> n = update('delete from user')
     >>> u1 = dict(id=96900, name='Ada', email='ada@test.org', passwd='A-12345', last_modified=time.time())
@@ -615,7 +601,7 @@ class ModelMetaclass(type):
         if not name in cls.subclasses:
             cls.subclasses[name] = name
         else:
-            raise TypeError('Cannot redefine class: %s' % name)
+            logging.warning('Redefine class: %s' % name)
 
         mappings = dict()
         primary_key = None
@@ -649,7 +635,7 @@ class ModelMetaclass(type):
                 attrs[trigger] = None
         return type.__new__(cls, name, bases, attrs)
 
-class Model(object):
+class Model(dict):
     '''
     Base class for ORM.
 
@@ -687,13 +673,21 @@ class Model(object):
     __metaclass__ = ModelMetaclass
 
     def __init__(self, **kw):
-        for k, v in kw.iteritems():
-            setattr(self, k, v)
+        super(Model, self).__init__(**kw)
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
+
+    def __setattr__(self, key, value):
+        self[key] = value
 
     @classmethod
     def get_by_id(cls, pk):
         d = select_one('select * from %s where %s=?' % (cls.__table__, cls.__primary_key__.name), pk)
-        return cls(**d)
+        return cls(**d) if d else None
 
     @classmethod
     def select_one(cls, where, *args):
