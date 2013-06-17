@@ -624,7 +624,7 @@ class ModelMetaclass(type):
                 mappings[k] = v
         # check exist of primary key:
         if not primary_key:
-            raise TypeError('Primary key not defined in class: %s' % name)
+            _log('Primary key not defined in class: %s' % name)
         for k in mappings.iterkeys():
             attrs.pop(k)
         attrs['__table__'] = name.lower()
@@ -692,10 +692,11 @@ class Model(dict):
     @classmethod
     def select_one(cls, where, *args):
         '''
-        Find by where clause and return one and only one result.
+        Find by where clause and return one result. If multiple results found, 
+        only the first one returned. If no result found, return None.
         '''
         d = select_one('select * from %s where %s' % (cls.__table__, where), *args)
-        return cls(**d)
+        return cls(**d) if d else None
 
     @classmethod
     def select(cls, where, order_by, *args):
