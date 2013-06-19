@@ -695,20 +695,17 @@ class Model(dict):
         Find by where clause and return one result. If multiple results found, 
         only the first one returned. If no result found, return None.
         '''
-        d = select_one('select * from %s where %s' % (cls.__table__, where), *args)
+        d = select_one('select * from %s %s' % (cls.__table__, where), *args) if where else \
+            select_one('select * from %s' % cls.__table__)
         return cls(**d) if d else None
 
     @classmethod
-    def select(cls, where, order_by, *args):
+    def select(cls, where, *args):
         '''
         Find by where clause and return list.
         '''
-        sql = ['select * from %s' % cls.__table__]
-        if where:
-            sql.append('where %s' % where)
-        if order_by:
-            sql.append('order by %s' % order_by)
-        L = select(' '.join(sql), *args)
+        L = select('select * from %s %s' % (cls.__table__, where), *args) if where else \
+            select('select * from %s' % cls.__table__)
         return [cls(**d) for d in L]
 
     @classmethod
@@ -716,7 +713,8 @@ class Model(dict):
         '''
         Find by 'select count(*) from where ... ' and return one and only one result.
         '''
-        return select_int('select count(%s) from %s where %s' % (cls.__primary_key__.name, cls.__table__, where), *args)
+        return select_int('select count(%s) from %s %s' % (cls.__primary_key__.name, cls.__table__, where), *args) if where else \
+               select_int('select count(%s) from %s' % (cls.__primary_key__.name, cls.__table__))
 
     def update(self):
         kw = {}
