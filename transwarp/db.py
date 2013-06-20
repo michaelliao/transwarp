@@ -717,6 +717,7 @@ class Model(dict):
                select_int('select count(%s) from %s' % (cls.__primary_key__.name, cls.__table__))
 
     def update(self):
+        self.pre_update and self.pre_update()
         kw = {}
         for k, v in self.__mappings__.iteritems():
             if v.updatable:
@@ -727,15 +728,16 @@ class Model(dict):
                     setattr(self, k, arg)
                 kw[k] = arg
         pk = self.__primary_key__.name
-        self.pre_update and self.pre_update()
         update_kw(self.__table__, '%s=?' % pk, getattr(self, pk), **kw)
 
     def delete(self):
+        self.pre_delete and self.pre_delete()
         pk = self.__primary_key__.name
         args = (getattr(self, pk), )
         _update('delete from %s where %s=?' % (self.__table__, pk), args)
 
     def insert(self):
+        self.pre_insert and self.pre_insert()
         fields = []
         params = []
         args = []
@@ -748,7 +750,6 @@ class Model(dict):
                     arg = v.default
                     setattr(self, k, arg)
                 args.append(arg)
-        self.pre_insert and self.pre_insert()
         _update('insert into %s (%s) values (%s)' % (self.__table__, ','.join(fields), ','.join(params)), args)
 
 if __name__=='__main__':
