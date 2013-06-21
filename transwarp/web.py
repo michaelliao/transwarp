@@ -618,9 +618,7 @@ class _InputDict(dict):
     >>> d2.gets('a')
     [u'1']
     >>> d2.gets('empty')
-    Traceback (most recent call last):
-        ...
-    KeyError: 'empty'
+    []
     '''
     def __init__(self, **kw):
         d = {}
@@ -638,9 +636,14 @@ class _InputDict(dict):
         return self[key]
 
     def gets(self, key):
+        '''
+        Get multiple values of the key. Return [] if no key found.
+        '''
         if key in self._multidict:
             return self._multidict[key][:]
-        return [self[key]]
+        if key in self:
+            return [self[key]]
+        return []
 
 class Request(object):
     '''
