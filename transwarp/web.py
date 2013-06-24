@@ -1714,25 +1714,36 @@ class WSGIApplication(object):
             return self.error_handler(e, start_response, self._debug)
         ctx.response.set_header('X-Execution-Time', str(time.time() - exec_start))
 
+        # return str, unicode or Template:
+        if isinstance(ret, str):
+            return self._as_str(ret, start_response)
+
+        if isinstance(ret, unicode):
+            return self._as_str(ret.encode('utf-8'), start_response)
+
+        elif isinstance(ret, Template):
+            try:
+                s = self.template_render(ret.template_name, **ret.model)
+                return self._as_str(s, start_response)
+            except Exception, e:
+                return self.error_handler(e, start_response, self._debug)
+
+        # return iterable or generator:
         if isinstance(ret, collections.Iterable) or isinstance(ret, types.GeneratorType):
             start_response(ctx.response.status, ctx.response.headers)
             return ret
-        # ret to response_text:
-        resp = ''
-        if isinstance(ret, str):
-            resp = ret
-        elif isinstance(ret, unicode):
-            resp = ret.encode('utf-8')
-        elif isinstance(ret, Template):
-            try:
-                resp = self.template_render(ret.template_name, **ret.model)
-            except Exception, e:
-                return self.error_handler(e, start_response, self._debug)
-        elif ret is not None:
-            resp = str(ret)
-        ctx.response.write(resp)
+
+        # return others:
+        if ret is not None:
+            return self._as_str(str(ret), start_response)
+
         start_response(ctx.response.status, ctx.response.headers)
         return ctx.response.body
+
+    def _as_str(self, s, start_response):
+        ctx.response.write(s)
+        start_response(ctx.response.status, ctx.response.headers)
+        return ctx.response.body        
 
     def __call__(self, environ, start_response):
         if self._debug:
