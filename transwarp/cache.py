@@ -357,10 +357,11 @@ class RedisClient(object):
         >>> c.getints(key1, key2, key3)
         [0, 0, 0]
         >>> c.setint(key1, 100)
-        >>> c.setint(key2, 200)
-        >>> c.setint(key3, -300)
+        >>> c.setint(key2, -200)
+        >>> c.incr(key3)
+        1
         >>> c.getints(key1, key2, key3)
-        [100, 200, -300]
+        [100, -200, 1]
         '''
         return map(_safe_int, self._client.mget(keys))
 
