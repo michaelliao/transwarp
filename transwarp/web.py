@@ -8,11 +8,8 @@ A simple, lightweight, WSGI-compatible web framework.
 __author__ = 'Michael Liao'
 
 import __builtin__
-try:
-    import json
-except ImportError:
-    import simplejson as json
-import types, sys, os, re, cgi, sys, base64, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
+
+import types, sys, os, re, cgi, sys, base64, json, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
 
 # thread local object for storing request and response.
 ctx = threading.local()
@@ -215,61 +212,6 @@ class RedirectError(HttpError):
         return '%s, %s' % (self.status, self.location)
 
     __repr__ = __str__
-
-class APIError(StandardError):
-    '''
-    APIError that defines http json-api error.
-
-    >>> e = APIError('value', 'user.email', 'Invalid email address.')
-    >>> e.error
-    'value'
-    >>> e.data
-    'user.email'
-    >>> e.message
-    'Invalid email address.'
-    '''
-
-    def __init__(self, error, data, message=''):
-        super(APIError, self).__init__(message)
-        self.error = error
-        self.data = data
-        self.message = message
-
-def jsonapi(func):
-    '''
-    A decorator that makes a function to api, makes the return value as json.
-
-    >>> ctx.response = Dict()
-    >>> @jsonapi
-    ... def blog_update(err=0):
-    ...    if err:
-    ...        raise APIError('value', 'email', 'invalid email.')
-    ...    return dict(success='ok')
-    >>> blog_update()
-    '{"success": "ok"}'
-    >>> ctx.response.content_type
-    'application/json; charset=utf-8'
-    >>> r = json.loads(blog_update(1))
-    >>> r['error']
-    u'value'
-    >>> r['data']
-    u'email'
-    '''
-    @functools.wraps(func)
-    def _wrapper(*args, **kw):
-        try:
-            s = json.dumps(func(*args, **kw))
-            ctx.response.content_type = 'application/json; charset=utf-8'
-            return s
-        except HttpError, e:
-            raise
-        except APIError, e:
-            ctx.response.content_type = 'application/json; charset=utf-8'
-            return json.dumps(dict(error=e.error, data=e.data, message=e.message))
-        except Exception, e:
-            logging.exception('Error when calling jsonapi function.')
-            return json.dumps(dict(error='server:error', data=e.__class__.__name__, message=e.message))
-    return _wrapper
 
 def badrequest():
     '''
@@ -1381,11 +1323,18 @@ def _init_jinja2(templ_dir, **kw):
             if len(value) > 33:
                 return '%s...%s' % (value[:20], value[-10:])
         return value
+    def url_filter(value):
+        if isinstance(value, unicode):
+            value = value.encode('utf-8')
+        if isinstance(value, str):
+            return urllib.quote(value)
+        return str(value)
     env.filters['dt'] = datetime_filter
     env.filters['d'] = date_filter
     env.filters['t'] = time_filter
     env.filters['jsstr'] = jsstr_filter
     env.filters['elli'] = ellipsis_filter
+    env.filters['url'] = url_filter
     def _render(_jinja2_temp_name_, **model):
         return env.get_template(_jinja2_temp_name_).render(**model).encode('utf-8')
     return _render
@@ -1712,7 +1661,7 @@ class WSGIApplication(object):
             return ()
         except Exception, e:
             return self.error_handler(e, start_response, self._debug)
-        ctx.response.set_header('X-Execution-Time', str(time.time() - exec_start))
+        ctx.response.set_header('X-Execution-Time', '%.5f' % (time.time() - exec_start))
 
         # return str, unicode or Template:
         if isinstance(ret, str):
@@ -1722,8 +1671,10 @@ class WSGIApplication(object):
             return self._as_str(ret.encode('utf-8'), start_response)
 
         elif isinstance(ret, Template):
+            render_start = time.time()
             try:
                 s = self.template_render(ret.template_name, **ret.model)
+                ctx.response.set_header('X-Render-Time', '%.5f' % (time.time() - render_start))
                 return self._as_str(s, start_response)
             except Exception, e:
                 return self.error_handler(e, start_response, self._debug)
