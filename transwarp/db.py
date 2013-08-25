@@ -60,6 +60,13 @@ def next_str(t=None):
         t = time.time()
     return '%015d%s000' % (int(t * 1000), uuid.uuid4().hex)
 
+def _profiling(start, sql=''):
+    t = time.time() - start
+    if t > 0.1:
+        logging.warning('[PROFILING] [DB] %s: %s' % (t, sql))
+    else:
+        logging.info('[PROFILING] [DB] %s: %s' % (t, sql))
+
 class Dict(dict):
     '''
     Simple dict but support access as x.y style.
@@ -296,8 +303,10 @@ def with_transaction(func):
     '''
     @functools.wraps(func)
     def _wrapper(*args, **kw):
+        _start = time.time()
         with _Transaction():
             return func(*args, **kw)
+        _profiling(_start)
     return _wrapper
 
 def _select(sql, first, *args):
@@ -307,6 +316,7 @@ def _select(sql, first, *args):
     if _db_convert != '?':
         sql = sql.replace('?', _db_convert)
     _log('SQL: %s, ARGS: %s' % (sql, args))
+    start = time.time()
     try:
         cursor = _db_ctx.connection.cursor()
         cursor.execute(sql, args)
@@ -321,6 +331,7 @@ def _select(sql, first, *args):
     finally:
         if cursor:
             cursor.close()
+        _profiling(start, sql)
 
 @with_connection
 def select_one(sql, *args):
@@ -407,6 +418,7 @@ def _update(sql, args, post_fn=None):
     if _db_convert != '?':
         sql = sql.replace('?', _db_convert)
     _log('SQL: %s, ARGS: %s' % (sql, args))
+    start = time.time()
     try:
         cursor = _db_ctx.connection.cursor()
         cursor.execute(sql, args)
@@ -420,6 +432,7 @@ def _update(sql, args, post_fn=None):
     finally:
         if cursor:
             cursor.close()
+        _profiling(start, sql)
 
 def insert(table, **kw):
     '''
