@@ -11,40 +11,10 @@ import __builtin__
 
 import types, sys, os, re, cgi, sys, base64, json, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
 
+from transwarp.utils import Dict, load_module
+
 # thread local object for storing request and response.
 ctx = threading.local()
-
-class Dict(dict):
-    '''
-    Simple dict but support access as x.y style.
-
-    >>> d1 = Dict()
-    >>> d1['x'] = 100
-    >>> d1.x
-    100
-    >>> d1.y = 200
-    >>> d1['y']
-    200
-    >>> d2 = Dict(a=1, b=2, c='3')
-    >>> d2.c
-    '3'
-    >>> d2['empty']
-    Traceback (most recent call last):
-        ...
-    KeyError: 'empty'
-    >>> d2.empty
-    Traceback (most recent call last):
-        ...
-    AttributeError: 'Dict' object has no attribute 'empty'
-    '''
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
-
-    def __setattr__(self, key, value):
-        self[key] = value
 
 # all known response statues:
 _RESPONSE_STATUSES = {
@@ -153,14 +123,11 @@ _RESPONSE_HEADERS = (
     'X-UA-Compatible',
 )
 
-_RESPONSE_HEADER_DICT = {}
-
-for hdr in _RESPONSE_HEADERS:
-    _RESPONSE_HEADER_DICT[hdr.upper()] = hdr
+_RESPONSE_HEADER_DICT = dict(zip(map(lambda x: x.upper(), _RESPONSE_HEADERS), _RESPONSE_HEADERS))
 
 _HEADER_X_POWERED_BY = ('X-Powered-By', 'transwarp/1.0')
 
-class HttpError(StandardError):
+class HttpError(Exception):
     '''
     HttpError that defines http error code.
 
@@ -1572,9 +1539,7 @@ class WSGIApplication(object):
     def _parse_modules(self, modules, debug):
         L = []
         for mod in modules:
-            last = mod.rfind('.')
-            name = mod if last==(-1) else mod[:last]
-            spam = __import__(mod, globals(), locals(), [name])
+            spam = load_module(mod)
             if debug:
                 spam.mtime = self._getmtime(spam.__file__)
             L.append(spam)
@@ -1694,7 +1659,7 @@ class WSGIApplication(object):
     def _as_str(self, s, start_response):
         ctx.response.write(s)
         start_response(ctx.response.status, ctx.response.headers)
-        return ctx.response.body        
+        return ctx.response.body
 
     def __call__(self, environ, start_response):
         if self._debug:
