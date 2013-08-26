@@ -9,6 +9,8 @@ Database operation module. This module is independent with web module.
 
 import os, re, sys, time, uuid, socket, datetime, functools, threading, logging, collections
 
+from transwarp.utils import Dict
+
 class _IdGenerator():
     def __init__(self, server_id=0):
         '''
@@ -66,50 +68,6 @@ def _profiling(start, sql=''):
         logging.warning('[PROFILING] [DB] %s: %s' % (t, sql))
     else:
         logging.info('[PROFILING] [DB] %s: %s' % (t, sql))
-
-class Dict(dict):
-    '''
-    Simple dict but support access as x.y style.
-
-    >>> d1 = Dict()
-    >>> d1['x'] = 100
-    >>> d1.x
-    100
-    >>> d1.y = 200
-    >>> d1['y']
-    200
-    >>> d2 = Dict(a=1, b=2, c='3')
-    >>> d2.c
-    '3'
-    >>> d2['empty']
-    Traceback (most recent call last):
-        ...
-    KeyError: 'empty'
-    >>> d2.empty
-    Traceback (most recent call last):
-        ...
-    AttributeError: 'Dict' object has no attribute 'empty'
-    >>> d3 = Dict(('a', 'b', 'c'), (1, 2, 3))
-    >>> d3.a
-    1
-    >>> d3.b
-    2
-    >>> d3.c
-    3
-    '''
-    def __init__(self, names=(), values=(), **kw):
-        super(Dict, self).__init__(**kw)
-        for k, v in zip(names, values):
-            self[k] = v
-
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            raise AttributeError(r"'Dict' object has no attribute '%s'" % key)
-
-    def __setattr__(self, key, value):
-        self[key] = value
 
 class DBError(Exception):
     pass
@@ -559,6 +517,7 @@ class Field(object):
         self.nullable = kw.get('nullable', True)
         self.updatable = kw.get('updatable', True)
         self.insertable = kw.get('insertable', True)
+        self.ddl = kw.get('ddl', '')
 
     @property
     def default(self):
@@ -566,7 +525,7 @@ class Field(object):
         return d() if callable(d) else d
 
     def __str__(self):
-        s = ['<%s:%s,default(%s),' % (self.__class__.__name__, self.name, self.default)]
+        s = ['<%s:%s,%s,default(%s),' % (self.__class__.__name__, self.name, self.ddl, self.default)]
         self.nullable and s.append('N')
         self.updatable and s.append('U')
         self.insertable and s.append('I')
@@ -594,7 +553,7 @@ class BlobField(Field):
 class VersionField(Field):
 
     def __init__(self, name=None):
-        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True)
+        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True, ddl='bigint not null')
 
 _triggers = ('post_get_by_id', 'pre_insert', 'post_insert', 'pre_update', 'post_update', 'pre_delete', 'post_delete')
 
@@ -622,22 +581,22 @@ class ModelMetaclass(type):
             if isinstance(v, Field):
                 if not v.name:
                     v.name = k
-                _log('Found mapping: %s => %s' % (k, v))
+                logging.info('Found mapping: %s => %s' % (k, v))
                 # check duplicate primary key:
                 if v.primary_key:
                     if primary_key:
                         raise TypeError('Cannot define more than 1 primary key in class: %s' % name)
                     if v.updatable:
-                        _log('NOTE: change primary key to non-updatable.')
+                        logging.warning('NOTE: change primary key to non-updatable.')
                         v.updatable = False
                     if v.nullable:
-                        _log('NOTE: change primary key to non-nullable.')
+                        logging.warning('NOTE: change primary key to non-nullable.')
                         v.nullable = False
                     primary_key = v
                 mappings[k] = v
         # check exist of primary key:
         if not primary_key:
-            _log('Primary key not defined in class: %s' % name)
+            raise TypeError('Primary key not defined in class: %s' % name)
         for k in mappings.iterkeys():
             attrs.pop(k)
         attrs['__table__'] = name.lower()
