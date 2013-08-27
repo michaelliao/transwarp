@@ -24,9 +24,17 @@ Task queue module for distributed async task.
 |    Callback    |
 +----------------+
 
-POST /api/tasks/create
-Host: scheduler.transwarp.com
-Content-Type: application/json
+class TaskManager:
+    def create_task(priority, data):
+        pass
+
+    def get_tasks():
+        pass
+
+    def get_task(task_id):
+        pass
+
+    def 
 
 data={"the json data"}
 
@@ -40,9 +48,10 @@ pending -> executing -> done -+-> notify
 __SQL__ = '''
 create table tasks (
     id varchar(50) not null,
+    group_id varchar(50) not null,
     queue varchar(50) not null,
-    name varchar(50) not null,
-    callback varchar(1000) not null,
+    clazz varchar(100) not null,
+    name varchar(100) not null,
     timeout bigint not null,
     status varchar(50) not null,
     max_retry int not null,
@@ -82,8 +91,8 @@ def _json_dumps(obj):
     ...     def __init__(self, name):
     ...         self.name = name
 
-    >>> _json_dumps([Person('Bob'), None])
-    '[{"name": "Bob"}, null]'
+    >>> _json_dumps([Person('Bob'), None, [True, dict(a=1)]])
+    '[{"name": "Bob"}, null, [true, {"a": 1}]]'
     '''
     def _dump_obj(obj):
         if isinstance(obj, dict):
@@ -107,6 +116,13 @@ def cleanup(queue=None, days=7):
     '''
     done_time = time.time() - days * 86400
     return db.update('delete from tasks where status=? and execution_end_time<?', _DONE, done_time)
+
+
+
+
+
+
+
 
 def get_tasks(queue, status=None, offset=0, limit=100):
     '''
