@@ -9,47 +9,7 @@ Database operation module. This module is independent with web module.
 
 import os, re, sys, time, uuid, socket, datetime, functools, threading, logging, collections
 
-from transwarp.utils import Dict
-
-class _IdGenerator():
-    def __init__(self, server_id=0):
-        '''
-        Init an id generator with server id. Server id can be automatically got from 
-        hostname. e.g. 'server-100' => 100, 'test01' => 1.
-
-        Server id makes each server generate different id at the same time.
-        '''
-        if server_id == 0:
-            m = re.match('^[^0-9]*([0-9]+)$', socket.gethostname())
-            if m:
-                server_id = int(m.group(1)) & 255
-        self.server_id = server_id
-        self.time_reduction = 1262275200000
-        self.last_time = self._get_current_time()
-        self.auto_increase = 0
-
-    def _get_current_time(self):
-        return long((time.time() * 1000 - self.time_reduction)) >> 8
-
-    def next_id(self):
-        current = self._get_current_time()
-        if current < self.last_time:
-            current = self.last_time
-            self.auto_increase = 0
-        elif current > self.last_time:
-            self.auto_increase = 0
-        elif (current == self.last_time) and ((self.auto_increase & 0x1fffff) == 0x100000):
-            current += 1
-            self.auto_increase = 0
-        self.last_time = current
-        next = (current << 28) | (0xfffff00L & (self.auto_increase << 8)) | self.server_id
-        self.auto_increase += 1
-        return next
-
-_id_generator = None
-
-def next_int():
-    return _id_generator.next_id()
+from utils import Dict
 
 def next_str(t=None):
     '''
@@ -78,13 +38,38 @@ class MultiColumnsError(DBError):
 def _log(s):
     logging.debug(s)
 
-def _db_connect():
+def _dummy_connect():
     '''
     Connect function used for get db connection. This function will be relocated in init(dbn, ...).
     '''
     raise DBError('Database is not initialized. call init(dbn, ...) first.')
 
+_db_connect = _dummy_connect
 _db_convert = '?'
+
+class _LasyConnection(object):
+
+    def __init__(self):
+        self.connection = None
+
+    def cursor(self):
+        if self.connection is None:
+            _log('open connection...')
+            self.connection = _db_connect()
+        return self.connection.cursor()
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def cleanup(self):
+        if self.connection:
+            connection = self.connection
+            self.connection = None
+            _log('close connection...')
+            connection.close()
 
 class _DbCtx(threading.local):
     '''
@@ -94,18 +79,18 @@ class _DbCtx(threading.local):
         self.connection = None
         self.transactions = 0
 
+    def is_init(self):
+        return not self.connection is None
+
     def init(self):
-        _log('open connection...')
-        self.connection = _db_connect()
+        _log('open lazy connection...')
+        self.connection = _LasyConnection()
         self.transactions = 0
 
     def cleanup(self):
-        _log('cleanup connection...')
-        conn = self.connection
-        self.connection = None
-        conn.close()
+        self.connection.cleanup()
 
-    def open_cursor(self):
+    def cursor(self):
         '''
         Return cursor
         '''
@@ -113,20 +98,20 @@ class _DbCtx(threading.local):
 
 _db_ctx = _DbCtx()
 
-class _Connection(object):
+class _ConnectionCtx(object):
     '''
-    Connection object that can open and close connection. Connection object can be nested and only the most 
+    _ConnectionCtx object that can open and close connection context. _ConnectionCtx object can be nested and only the most 
     outer connection has effect.
 
-    with _Connection():
+    with connection():
         pass
-        with _Connection():
+        with connection():
             pass
     '''
     def __enter__(self):
         global _db_ctx
         self.should_cleanup = False
-        if _db_ctx.connection is None:
+        if not _db_ctx.is_init():
             _db_ctx.init()
             self.should_cleanup = True
         return self
@@ -138,12 +123,12 @@ class _Connection(object):
 
 def connection():
     '''
-    Return _Connection object that can be used by 'with' statement:
+    Return _ConnectionCtx object that can be used by 'with' statement:
 
     with connection():
         pass
     '''
-    return _Connection()
+    return _ConnectionCtx()
 
 def with_connection(func):
     '''
@@ -157,22 +142,22 @@ def with_connection(func):
     '''
     @functools.wraps(func)
     def _wrapper(*args, **kw):
-        with _Connection():
+        with _ConnectionCtx():
             return func(*args, **kw)
     return _wrapper
 
-class _Transaction(object):
+class _TransactionCtx(object):
     '''
-    Transaction object that can handle transactions.
+    _TransactionCtx object that can handle transactions.
 
-    with _Transaction():
+    with _TransactionCtx():
         pass
     '''
 
     def __enter__(self):
         global _db_ctx
         self.should_close_conn = False
-        if _db_ctx.connection is None:
+        if not _db_ctx.is_init():
             # needs open a connection first:
             _db_ctx.init()
             self.should_close_conn = True
@@ -200,16 +185,16 @@ class _Transaction(object):
             _db_ctx.connection.commit()
             _log('commit ok.')
         except:
-            _log('commit failed. try rollback...')
+            logging.warning('commit failed. try rollback...')
             _db_ctx.connection.rollback()
-            log('rollback ok.')
+            logging.warning('rollback ok.')
             raise
 
     def rollback(self):
         global _db_ctx
-        _log('rollback transaction...')
+        _log('manully rollback transaction...')
         _db_ctx.connection.rollback()
-        _log('rollback ok.')
+        logging.info('rollback ok.')
 
 def transaction():
     '''
@@ -236,7 +221,7 @@ def transaction():
     >>> select('select * from user where id=?', 900302)
     []
     '''
-    return _Transaction()
+    return _TransactionCtx()
 
 def with_transaction(func):
     '''
@@ -262,7 +247,7 @@ def with_transaction(func):
     @functools.wraps(func)
     def _wrapper(*args, **kw):
         _start = time.time()
-        with _Transaction():
+        with _TransactionCtx():
             return func(*args, **kw)
         _profiling(_start)
     return _wrapper
