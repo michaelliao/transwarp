@@ -11,7 +11,7 @@ import __builtin__
 
 import types, sys, os, re, cgi, sys, base64, json, time, hashlib, inspect, datetime, functools, mimetypes, threading, logging, urllib, collections, linecache
 
-from transwarp.utils import Dict, load_module
+from utils import Dict, load_module
 
 # thread local object for storing request and response.
 ctx = threading.local()
