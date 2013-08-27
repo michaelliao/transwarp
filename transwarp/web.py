@@ -1155,22 +1155,6 @@ class Template(object):
         if '_' in __builtin__.__dict__:
             self.model['_'] = _
 
-def _init_mako(templ_dir, **kw):
-    '''
-    Render using mako.
-
-    >>> tmpl_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test')
-    >>> func = _init_mako(tmpl_path)
-    >>> r = func('mako-test.html', names=['Michael', 'Tracy'])
-    >>> r.replace('\\n', '')
-    '<p>Hello, Michael.</p><p>Hello, Tracy.</p>'
-    '''
-    from mako.lookup import TemplateLookup
-    lookup = TemplateLookup(directories=[templ_dir], output_encoding='utf-8', **kw)
-    def _render(_mako_temp_name_, **model):
-        return lookup.get_template(_mako_temp_name_).render(**model)
-    return _render
-
 def _init_jinja2(templ_dir, **kw):
     '''
     Render using jinja2.
@@ -1220,29 +1204,10 @@ def _init_jinja2(templ_dir, **kw):
         return env.get_template(_jinja2_temp_name_).render(**model).encode('utf-8')
     return _render
 
-def _init_cheetah(templ_dir, **kw):
-    '''
-    Render using cheetah.
-
-    >>> tmpl_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'test')
-    >>> func = _init_cheetah(tmpl_path)
-    >>> r = func('cheetah-test.html', names=['Michael', 'Tracy'])
-    >>> r.replace('\\n', '')
-    '<p>Hello, Michael.</p><p>Hello, Tracy.</p>'
-    '''
-    from Cheetah.Template import Template
-    def _render(_cheetah_temp_name_, **model):
-        return str(Template(file=os.path.join(templ_dir, _cheetah_temp_name_), searchList=[model]))
-    return _render
-
 def _install_template_engine(name, templ_dir, **kw):
     name = str(name).lower()
-    if name=='mako':
-        return _init_mako(templ_dir, **kw)
     if name=='jinja2':
         return _init_jinja2(templ_dir, **kw)
-    if name=='cheetah':
-        return _init_cheetah(templ_dir, **kw)
     raise StandardError('no such template engine: %s' % name)
 
 def _default_error_handler(e, start_response, is_debug):
