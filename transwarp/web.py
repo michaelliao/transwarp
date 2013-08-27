@@ -348,49 +348,23 @@ def _route_decorator_maker(path, allow_get, allow_post):
         return _wrapper
     return _decorator
 
-def _route_decorator(func, allow_get, allow_post):
-    '''
-    A decorator that does not have args:
-
-    @route
-    def foo():
-        pass
-    '''
-    @functools.wraps(func)
-    def _wrapper(*args, **kw):
-        _log('call route.wrapper: %s, %s' % (str(args), str(kw)))
-        return func(*args, **kw)
-    _wrapper.__web_route__ = '/%s/%s' % (func.__module__.replace('.', '/'), func.__name__)
-    _wrapper.__web_get__ = allow_get
-    _wrapper.__web_post__ = allow_post
-    return _wrapper
-
-def route(func_or_path=None):
+def route(path):
     '''
     @route decorator for both GET and POST.
     '''
-    if callable(func_or_path):
-        return _route_decorator(func_or_path, True, True)
-    else:
-        return _route_decorator_maker(func_or_path, True, True)
+    return _route_decorator_maker(path, True, True)
 
-def get(func_or_path=None):
+def get(path):
     '''
     @get decorator for GET only.
     '''
-    if callable(func_or_path):
-        return _route_decorator(func_or_path, True, False)
-    else:
-        return _route_decorator_maker(func_or_path, True, False)
+    return _route_decorator_maker(path, True, False)
 
-def post(func_or_path=None):
+def post(path):
     '''
     @post decorator for POST only.
     '''
-    if callable(func_or_path):
-        return _route_decorator(func_or_path, False, True)
-    else:
-        return _route_decorator_maker(func_or_path, False, True)
+    return _route_decorator_maker(path, False, True)
 
 _re_route = re.compile(r'\<(\w*\:?\w*)\>')
 _convert = {'int' : int, \
