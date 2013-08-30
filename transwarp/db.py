@@ -22,6 +22,8 @@ def next_str(t=None):
         t = time.time()
     return '%015d%s000' % (int(t * 1000), uuid.uuid4().hex)
 
+next_id = next_str
+
 def _profiling(start, sql=''):
     t = time.time() - start
     if t > 0.1:
@@ -495,6 +497,8 @@ def init(db_type, db_schema, db_host, db_port=0, db_user=None, db_password=None,
 
 class Field(object):
 
+    _count = 0
+
     def __init__(self, **kw):
         self.name = kw.get('name', None)
         self._default = kw.get('default', None)
@@ -503,6 +507,9 @@ class Field(object):
         self.updatable = kw.get('updatable', True)
         self.insertable = kw.get('insertable', True)
         self.ddl = kw.get('ddl', '')
+
+        self._order = Field._count
+        Field._count = Field._count + 1
 
     @property
     def default(self):
@@ -538,7 +545,7 @@ class BlobField(Field):
 class VersionField(Field):
 
     def __init__(self, name=None):
-        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True, ddl='bigint not null')
+        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True, ddl='bigint')
 
 _triggers = ('post_get_by_id', 'pre_insert', 'post_insert', 'pre_update', 'post_update', 'pre_delete', 'post_delete')
 
@@ -560,6 +567,7 @@ class ModelMetaclass(type):
         else:
             logging.warning('Redefine class: %s' % name)
 
+        logging.info('Scan ORMapping %s...' % name)
         mappings = dict()
         primary_key = None
         for k, v in attrs.iteritems():
