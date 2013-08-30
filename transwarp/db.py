@@ -549,6 +549,33 @@ class VersionField(Field):
 
 _triggers = ('post_get_by_id', 'pre_insert', 'post_insert', 'pre_update', 'post_update', 'pre_delete', 'post_delete')
 
+def _from_doc(doc):
+    L = []
+    for l in doc.split('\n'):
+        s = l.strip()
+        if s.startswith('@@'):
+            sql = s[2:].strip()
+            if not sql.endswith(','):
+                sql = '%s,' % sql
+            L.append('  %s' % sql)
+    return L
+
+def _gen_sql(table_name, doc, mappings):
+    pk = None
+    sql = ['-- generating SQL for %s...' % table_name, 'create table %s (' % table_name]
+    for f in sorted(mappings.values(), lambda x, y: cmp(x._order, y._order)):
+        if not hasattr(f, 'ddl'):
+            raise StandardError('no ddl in field "%s".' % n)
+        ddl = f.ddl
+        nullable = f.nullable
+        if f.primary_key:
+            pk = f.name
+        sql.append(nullable and '  %s %s,' % (f.name, ddl) or '  %s %s not null,' % (f.name, ddl))
+    sql.extend(_from_doc(doc))
+    sql.append('  primary key(%s)' % pk)
+    sql.append(');')
+    return '\n'.join(sql)
+
 class ModelMetaclass(type):
     '''
     Metaclass for model objects.
@@ -595,6 +622,9 @@ class ModelMetaclass(type):
         attrs['__table__'] = name.lower()
         attrs['__mappings__'] = mappings
         attrs['__primary_key__'] = primary_key
+        def _sql(self):
+            return _gen_sql(name.lower(), cls.__doc__, mappings)
+        attrs['__sql__'] = _sql
         for trigger in _triggers:
             if not trigger in attrs:
                 attrs[trigger] = None
