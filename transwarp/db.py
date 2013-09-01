@@ -643,7 +643,7 @@ class Model(dict):
     ...     def pre_insert(self):
     ...         self.last_modified = time.time()
     >>> u = User(id=10190, name='Michael', email='orm@db.org')
-    >>> u.insert()
+    >>> r = u.insert()
     >>> u.email
     'orm@db.org'
     >>> u.passwd
@@ -656,11 +656,11 @@ class Model(dict):
     >>> f.email
     u'orm@db.org'
     >>> f.email = 'changed@db.org'
-    >>> f.update() # change email but email is non-updatable!
+    >>> r = f.update() # change email but email is non-updatable!
     >>> g = User.get_by_id(10190)
     >>> g.email
     u'orm@db.org'
-    >>> g.delete()
+    >>> r = g.delete()
     >>> len(select('select * from user where id=10190'))
     0
     '''
@@ -724,12 +724,14 @@ class Model(dict):
                 kw[k] = arg
         pk = self.__primary_key__.name
         update_kw(self.__table__, '%s=?' % pk, getattr(self, pk), **kw)
+        return self
 
     def delete(self):
         self.pre_delete and self.pre_delete()
         pk = self.__primary_key__.name
         args = (getattr(self, pk), )
         _update('delete from %s where %s=?' % (self.__table__, pk), args)
+        return self
 
     def insert(self):
         self.pre_insert and self.pre_insert()
@@ -746,6 +748,7 @@ class Model(dict):
                     setattr(self, k, arg)
                 args.append(arg)
         _update('insert into %s (%s) values (%s)' % (self.__table__, ','.join(fields), ','.join(params)), args)
+        return self
 
 if __name__=='__main__':
     logging.basicConfig(level=logging.DEBUG)
