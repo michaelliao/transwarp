@@ -855,7 +855,7 @@ class Response(object):
         [('Content-Type', 'text/html; charset=utf-8'), ('X-Powered-By', 'transwarp/1.0')]
         >>> r.set_cookie('s1', 'ok', 3600)
         >>> r.headers
-        [('Content-Type', 'text/html; charset=utf-8'), ('Set-Cookie', 's1=ok; Max-Age=3600; Path=/'), ('X-Powered-By', 'transwarp/1.0')]
+        [('Content-Type', 'text/html; charset=utf-8'), ('Set-Cookie', 's1=ok; Max-Age=3600; Path=/; HttpOnly'), ('X-Powered-By', 'transwarp/1.0')]
         '''
         L = [(_RESPONSE_HEADER_DICT.get(k, k), v) for k, v in self._headers.iteritems()]
         if self._cookies:
@@ -974,7 +974,7 @@ class Response(object):
         '''
         self.set_cookie(name, '__deleted__', expires=time.time() - 31536000)
 
-    def set_cookie(self, name, value, max_age=None, expires=None, path='/', domain=None, secure=False, http_only=False):
+    def set_cookie(self, name, value, max_age=None, expires=None, path='/', domain=None, secure=False, http_only=True):
         '''
         Set a cookie.
 
@@ -987,19 +987,20 @@ class Response(object):
           path: the cookie path, default to '/'.
           domain: the cookie domain, default to None.
           secure: if the cookie secure, default to False.
-          http_only: if the cookie is for http only, default to False.
+          http_only: if the cookie is for http only, default to True for better safty 
+                     (client-side script cannot access cookies with HttpOnly flag).
 
         >>> r = Response()
         >>> r.set_cookie('company', 'Abc, Inc.', max_age=3600)
         >>> r._cookies
-        {'company': 'company=Abc%2C%20Inc.; Max-Age=3600; Path=/'}
+        {'company': 'company=Abc%2C%20Inc.; Max-Age=3600; Path=/; HttpOnly'}
         >>> r.set_cookie('company', r'Example="Limited"', expires=1342274794.123, path='/sub/')
         >>> r._cookies
-        {'company': 'company=Example%3D%22Limited%22; Expires=Sat, 14-Jul-2012 14:06:34 GMT; Path=/sub/'}
+        {'company': 'company=Example%3D%22Limited%22; Expires=Sat, 14-Jul-2012 14:06:34 GMT; Path=/sub/; HttpOnly'}
         >>> dt = datetime.datetime(2012, 7, 14, 22, 6, 34, tzinfo=UTC('+8:00'))
         >>> r.set_cookie('company', 'Expires', expires=dt)
         >>> r._cookies
-        {'company': 'company=Expires; Expires=Sat, 14-Jul-2012 14:06:34 GMT; Path=/'}
+        {'company': 'company=Expires; Expires=Sat, 14-Jul-2012 14:06:34 GMT; Path=/; HttpOnly'}
         '''
         L = ['%s=%s' % (_quote(name), _quote(value))]
         if expires is not None:
@@ -1025,7 +1026,7 @@ class Response(object):
         >>> r = Response()
         >>> r.set_cookie('company', 'Abc, Inc.', max_age=3600)
         >>> r._cookies
-        {'company': 'company=Abc%2C%20Inc.; Max-Age=3600; Path=/'}
+        {'company': 'company=Abc%2C%20Inc.; Max-Age=3600; Path=/; HttpOnly'}
         >>> r.unset_cookie('company')
         >>> r._cookies
         {}
