@@ -1168,6 +1168,18 @@ def _init_jinja2(templ_dir, **kw):
     '''
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(templ_dir, **kw))
+    def duration_filter(value):
+        if isinstance(value, (float, int, long)):
+            v = int(value + 0.5)
+            ss = v % 60
+            v = v // 60
+            mm = v % 60
+            hh = v // 60
+            if hh > 0:
+                value = '%d:%02d:%02d' % (hh, mm, ss)
+            else:
+                value = '%d:%02d' % (mm, ss)
+        return value
     def datetime_filter(value, format='%y-%m-%d %H:%M'):
         if isinstance(value, (float, int, long)):
             value = datetime.datetime.fromtimestamp(value)
@@ -1195,6 +1207,7 @@ def _init_jinja2(templ_dir, **kw):
         if isinstance(value, str):
             return urllib.quote(value)
         return str(value)
+    env.filters['duration'] = duration_filter
     env.filters['dt'] = datetime_filter
     env.filters['d'] = date_filter
     env.filters['t'] = time_filter
