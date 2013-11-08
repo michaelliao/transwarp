@@ -503,7 +503,7 @@ class Field(object):
         self.name = kw.get('name', None)
         self._default = kw.get('default', None)
         self.primary_key = kw.get('primary_key', False)
-        self.nullable = kw.get('nullable', True)
+        self.nullable = kw.get('nullable', False)
         self.updatable = kw.get('updatable', True)
         self.insertable = kw.get('insertable', True)
         self.ddl = kw.get('ddl', '')
@@ -525,42 +525,59 @@ class Field(object):
         return ''.join(s)
 
 class StringField(Field):
-    pass
+
+    def __init__(self, **kw):
+        if not 'default' in kw:
+            kw['default'] = ''
+        super(StringField, self).__init__(**kw)
 
 class IntegerField(Field):
-    pass
+
+    def __init__(self, **kw):
+        if not 'default' in kw:
+            kw['default'] = 0
+        if not 'ddl' in kw:
+            kw['ddl'] = 'bigint'
+        super(IntegerField, self).__init__(**kw)
 
 class FloatField(Field):
-    pass
+
+    def __init__(self, **kw):
+        if not 'default' in kw:
+            kw['default'] = 0.0
+        if not 'ddl' in kw:
+            kw['ddl'] = 'real'
+        super(FloatField, self).__init__(**kw)
 
 class BooleanField(Field):
-    pass
+
+    def __init__(self, **kw):
+        if not 'default' in kw:
+            kw['default'] = False
+        if not 'ddl' in kw:
+            kw['ddl'] = 'bool'
+        super(BooleanField, self).__init__(**kw)
 
 class DateTimeField(Field):
     pass
 
 class BlobField(Field):
-    pass
+
+    def __init__(self, **kw):
+        if not 'default' in kw:
+            kw['default'] = ''
+        if not 'ddl' in kw:
+            kw['ddl'] = 'blob'
+        super(BlobField, self).__init__(**kw)
 
 class VersionField(Field):
 
     def __init__(self, name=None):
-        super(VersionField, self).__init__(name=name, default=0, nullable=False, updatable=True, insertable=True, ddl='bigint')
+        super(VersionField, self).__init__(name=name, default=0, ddl='bigint')
 
 _triggers = ('post_get_by_id', 'pre_insert', 'post_insert', 'pre_update', 'post_update', 'pre_delete', 'post_delete')
 
-def _from_doc(doc):
-    L = []
-    for l in doc.split('\n'):
-        s = l.strip()
-        if s.startswith('@@'):
-            sql = s[2:].strip()
-            if not sql.endswith(','):
-                sql = '%s,' % sql
-            L.append('  %s' % sql)
-    return L
-
-def _gen_sql(table_name, doc, mappings):
+def _gen_sql(table_name, mappings):
     pk = None
     sql = ['-- generating SQL for %s...' % table_name, 'create table %s (' % table_name]
     for f in sorted(mappings.values(), lambda x, y: cmp(x._order, y._order)):
@@ -571,7 +588,6 @@ def _gen_sql(table_name, doc, mappings):
         if f.primary_key:
             pk = f.name
         sql.append(nullable and '  %s %s,' % (f.name, ddl) or '  %s %s not null,' % (f.name, ddl))
-    sql.extend(_from_doc(doc))
     sql.append('  primary key(%s)' % pk)
     sql.append(');')
     return '\n'.join(sql)
@@ -623,7 +639,7 @@ class ModelMetaclass(type):
         attrs['__mappings__'] = mappings
         attrs['__primary_key__'] = primary_key
         def _sql(self):
-            return _gen_sql(name.lower(), cls.__doc__, mappings)
+            return _gen_sql(name.lower(), mappings)
         attrs['__sql__'] = _sql
         for trigger in _triggers:
             if not trigger in attrs:
