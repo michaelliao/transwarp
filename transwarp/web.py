@@ -1207,6 +1207,20 @@ def _init_jinja2(templ_dir, **kw):
         if isinstance(value, str):
             return urllib.quote(value)
         return str(value)
+    def size_filter(value):
+        if isinstance(value, (int, long)):
+            if value < 1024:
+                return '%s bytes' % value
+            elif value < 1048576:
+                value = value // 1024
+                return '%s KB' % value
+            elif value < 1073741824:
+                value = value // 1048576
+                return '%s MB' % value
+            else:
+                value = value // 1073741824
+                return '%s GB' % value
+        return value
     env.filters['duration'] = duration_filter
     env.filters['dt'] = datetime_filter
     env.filters['d'] = date_filter
@@ -1214,6 +1228,7 @@ def _init_jinja2(templ_dir, **kw):
     env.filters['jsstr'] = jsstr_filter
     env.filters['elli'] = ellipsis_filter
     env.filters['url'] = url_filter
+    env.filters['size'] = size_filter
     def _render(_jinja2_temp_name_, **model):
         return env.get_template(_jinja2_temp_name_).render(**model).encode('utf-8')
     return _render
