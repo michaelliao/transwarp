@@ -662,6 +662,18 @@ class Request(object):
             return r[:]
         return [r]
 
+    def get_raw_data(self):
+        '''
+        Get raw data from HTTP POST and return as str.
+
+        >>> from StringIO import StringIO
+        >>> r = Request({'REQUEST_METHOD':'POST', 'wsgi.input':StringIO('<xml><raw/>')})
+        >>> r.get_raw_data()
+        '<xml><raw/>'
+        '''
+        fp = self._environ['wsgi.input']
+        return fp.read()
+
     def __iter__(self):
         '''
         Get all input parameter names.
