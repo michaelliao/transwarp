@@ -392,7 +392,7 @@ def insert(table, **kw):
     >>> insert('user', **u2)
     Traceback (most recent call last):
       ...
-    IntegrityError: column id is not unique
+    IntegrityError: UNIQUE constraint failed: user.id
     '''
     cols, args = zip(*kw.iteritems())
     sql = 'insert into %s (%s) values (%s)' % (table, ','.join(cols), ','.join([_db_convert for i in range(len(cols))]))
@@ -479,14 +479,20 @@ def init(db_type, db_schema, db_host, db_port=0, db_user=None, db_password=None,
     global _db_connect, _db_convert
     if db_type=='mysql':
         _log('init mysql...')
-        import MySQLdb
-        if not 'use_unicode' in db_args:
-            db_args['use_unicode'] = True
-        if not 'charset' in db_args:
-            db_args['charset'] = 'utf8'
-        if db_port==0:
-            db_port = 3306
-        _db_connect = lambda: MySQLdb.connect(db_host, db_user, db_password, db_schema, db_port, **db_args)
+        default_args = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': '',
+            'password': '',
+            'database': db_schema,
+            'use_unicode': True,
+            'charset': 'utf8',
+            'collation': 'utf8_general_ci'
+        }
+        import mysql.connector
+        for k, v in default_args.iteritems():
+            db_args[k] = db_args.get(k, v)
+        _db_connect = lambda: mysql.connector.connect(**db_args)
         _db_convert = '%s'
     elif db_type=='sqlite3':
         _log('init sqlite3...')
@@ -527,8 +533,8 @@ class Field(object):
 class StringField(Field):
 
     def __init__(self, **kw):
-        if not 'default' in kw:
-            kw['default'] = ''
+        kw['default'] = kw.get('default', '')
+        kw['ddl'] = kw.get('ddl', 'varchar(255)')
         super(StringField, self).__init__(**kw)
 
 class IntegerField(Field):
@@ -543,31 +549,32 @@ class IntegerField(Field):
 class FloatField(Field):
 
     def __init__(self, **kw):
-        if not 'default' in kw:
-            kw['default'] = 0.0
-        if not 'ddl' in kw:
-            kw['ddl'] = 'real'
+        kw['default'] = kw.get('default', 0.0)
+        kw['ddl'] = kw.get('ddl', 'real')
         super(FloatField, self).__init__(**kw)
 
 class BooleanField(Field):
 
     def __init__(self, **kw):
-        if not 'default' in kw:
-            kw['default'] = False
-        if not 'ddl' in kw:
-            kw['ddl'] = 'bool'
+        kw['default'] = kw.get('default', False)
+        kw['ddl'] = kw.get('ddl', 'bool')
         super(BooleanField, self).__init__(**kw)
 
 class DateTimeField(Field):
     pass
 
+class TextField(Field):
+
+    def __init__(self, **kw):
+        kw['default'] = kw.get('default', '')
+        kw['ddl'] = kw.get('ddl', 'text')
+        super(TextField, self).__init__(**kw)
+
 class BlobField(Field):
 
     def __init__(self, **kw):
-        if not 'default' in kw:
-            kw['default'] = ''
-        if not 'ddl' in kw:
-            kw['ddl'] = 'blob'
+        kw['default'] = kw.get('default', '')
+        kw['ddl'] = kw.get('ddl', 'blob')
         super(BlobField, self).__init__(**kw)
 
 class VersionField(Field):
@@ -635,11 +642,12 @@ class ModelMetaclass(type):
             raise TypeError('Primary key not defined in class: %s' % name)
         for k in mappings.iterkeys():
             attrs.pop(k)
-        attrs['__table__'] = name.lower()
+        if not '__table__' in attrs:
+            attrs['__table__'] = name.lower()
         attrs['__mappings__'] = mappings
         attrs['__primary_key__'] = primary_key
         def _sql(self):
-            return _gen_sql(name.lower(), mappings)
+            return _gen_sql(attrs['__table__'], mappings)
         attrs['__sql__'] = _sql
         for trigger in _triggers:
             if not trigger in attrs:
@@ -651,6 +659,7 @@ class Model(dict):
     Base class for ORM.
 
     >>> class User(Model):
+    ...     __table__ = 'USER'
     ...     id = IntegerField(primary_key=True)
     ...     name = StringField()
     ...     email = StringField(updatable=False)
