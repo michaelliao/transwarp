@@ -1,4 +1,4 @@
 transwarp
 =========
 
-Transwarp
+A simple Python framework for web, db and mail.
